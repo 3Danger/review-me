@@ -1,0 +1,7 @@
+jira:
+  baseUrl: "https://jsw.vseinstrumenti.ru"
+  user: your_username
+  password: your_password
+gitlab:
+  baseURL: "https://git.vseinstrumenti.net"
+  token: your_token
