@@ -24,8 +24,15 @@ func LocationMSK() *time.Location {
 }
 
 type Config struct {
-	Jira   Jira   `yaml:"jira"`
-	Gitlab Gitlab `yaml:"gitlab"`
+	Jira    Jira    `yaml:"jira"`
+	Gitlab  Gitlab  `yaml:"gitlab"`
+	Message Message `yaml:"message"`
+}
+
+type Message struct {
+	Team   string `yaml:"team"`
+	Review string `yaml:"review"`
+	Deploy string `yaml:"deploy"`
 }
 
 type Jira struct {

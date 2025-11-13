@@ -38,34 +38,41 @@ func run(cnf *config.Config) error {
 		client = new(http.Client)
 		mrURL  = flag.String("mr", "", "URL of the merge request")
 		team   = flag.String("team", "", "Team to notify (e.g., @team-name)")
-		//mrURL  = os.Args[1]
-		//team   = os.Args[2]
+		action = flag.String("action", "review", "what to do (deploy or review)")
 	)
 
 	flag.Parse()
 
+	if *team != "" {
+		cnf.Message.Team = *team
+	}
+
 	svc := manager.New(
+		cnf.Message,
 		shower.New(
 			gitlab.New(client, cnf.Gitlab),
 			jira.New(client, cnf.Jira),
 		),
 	)
 
-	info, err := svc.ReviewMe(*mrURL, *team)
+	var (
+		message string
+		err     error
+	)
+
+	switch *action {
+	case "review":
+		message, err = svc.ReviewMe(*mrURL)
+	case "deploy":
+		message, err = svc.DeployPlaning(*mrURL, time.Minute*30)
+	}
+
 	if err != nil {
 		return fmt.Errorf("format: %w", err)
 	}
 
 	// Вывод
-	fmt.Println(info)
-
-	info, err = svc.DeployPlaning(*mrURL, *team, time.Minute*30)
-	if err != nil {
-		return fmt.Errorf("format: %w", err)
-	}
-
-	// Вывод
-	fmt.Println(info)
+	fmt.Println(message)
 
 	return nil
 }

@@ -1,7 +1,6 @@
 package manager
 
 import (
-	"errors"
 	"time"
 
 	"review-info/internal/config"
@@ -10,38 +9,30 @@ import (
 
 type Service struct {
 	svc *shower.Service
+	cnf config.Message
 }
 
-func New(svc *shower.Service) *Service {
+func New(cnf config.Message, svc *shower.Service) *Service {
 	return &Service{
+		cnf: cnf,
 		svc: svc,
 	}
 }
 
-var ErrTeamInvalid = errors.New("team is invalid")
-
-func (s *Service) ReviewMe(rawGitlabURL, team string) (string, error) {
-	if team == "" || []rune(team)[0] != '@' {
-		return "", ErrTeamInvalid
-	}
-
+func (s *Service) ReviewMe(rawGitlabURL string) (string, error) {
 	info, err := s.svc.Process(rawGitlabURL)
 	if err != nil {
 		return "", err
 	}
 
-	msg := team +
-		"\nПосмотрите пожалуйста МР, " + "Сервис: " + info.ServiceName +
+	msg := s.cnf.Team +
+		"\n" + s.cnf.Review + ", " + "Сервис: " + info.ServiceName +
 		"\n" + info.Short()
 
 	return msg, nil
 }
 
-func (s *Service) DeployPlaning(rawGitlabURL, team string, after time.Duration) (string, error) {
-	if team == "" || []rune(team)[0] != '@' {
-		return "", ErrTeamInvalid
-	}
-
+func (s *Service) DeployPlaning(rawGitlabURL string, after time.Duration) (string, error) {
 	info, err := s.svc.Process(rawGitlabURL)
 	if err != nil {
 		return "", err
@@ -49,7 +40,7 @@ func (s *Service) DeployPlaning(rawGitlabURL, team string, after time.Duration) 
 
 	now := time.Now().In(config.LocationMSK()).Truncate(time.Minute * 15).Add(after)
 
-	msg := team + "\nПланирую выкатку " +
+	msg := s.cnf.Team + "\n" + s.cnf.Deploy + " " +
 		"[с " + now.Format("15:04") +
 		" по " + now.Add(time.Minute*30).Format("15:04") +
 		"]: По сервису " + info.ServiceName +
