@@ -95,14 +95,6 @@ func TestAppStructure(t *testing.T) {
 }
 
 func TestIsValidMRURL(t *testing.T) {
-	prefs := &preferences.Preferences{
-		Action:   "review",
-		Timezone: "Europe/Moscow",
-		Team:     "@test-team",
-	}
-
-	app := New(nil, prefs)
-
 	tests := []struct {
 		name  string
 		url   string
@@ -152,23 +144,16 @@ func TestIsValidMRURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := app.isValidMRURL(tt.url)
+			err := ValidateMRURL(tt.url)
+			result := err == nil
 			if result != tt.valid {
-				t.Errorf("isValidMRURL(%q) = %v, want %v", tt.url, result, tt.valid)
+				t.Errorf("ValidateMRURL(%q) = %v, want %v", tt.url, result, tt.valid)
 			}
 		})
 	}
 }
 
 func TestFormatErrorMessage(t *testing.T) {
-	prefs := &preferences.Preferences{
-		Action:   "review",
-		Timezone: "Europe/Moscow",
-		Team:     "@test-team",
-	}
-
-	app := New(nil, prefs)
-
 	tests := []struct {
 		name     string
 		errMsg   string
@@ -225,9 +210,9 @@ func TestFormatErrorMessage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a mock error
 			err := &mockError{msg: tt.errMsg}
-			result := app.formatErrorMessage(err)
+			result := FormatErrorMessage(err)
 			if result != tt.expected {
-				t.Errorf("formatErrorMessage(%q) = %q, want %q", tt.errMsg, result, tt.expected)
+				t.Errorf("FormatErrorMessage(%q) = %q, want %q", tt.errMsg, result, tt.expected)
 			}
 		})
 	}

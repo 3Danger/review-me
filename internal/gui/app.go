@@ -1,7 +1,6 @@
 package gui
 
 import (
-	"io"
 	"strings"
 
 	"gioui.org/app"
@@ -149,7 +148,7 @@ func (a *App) handleEvents(gtx layout.Context) {
 			break
 		}
 		if de, ok := ev.(transfer.DataEvent); ok {
-			clipboardText := extractClipboardText(de)
+			clipboardText := ExtractClipboardText(de)
 			if clipboardText != "" {
 				// Clear any previous clipboard error
 				a.clipboardError = ""
@@ -203,17 +202,18 @@ func (a *App) handleGenerate() {
 	a.mrURLError = ""
 
 	// Validate MR URL is not empty
-	mrURL := strings.TrimSpace(a.mrURL)
-	if mrURL == "" {
-		a.mrURLError = "Ошибка: MR URL не может быть пустым"
+	if err := ValidateNonEmpty(a.mrURL, "MR URL"); err != nil {
+		a.mrURLError = err.Error()
 		return
 	}
 
 	// Validate MR URL format
-	if !a.isValidMRURL(mrURL) {
-		a.mrURLError = "Ошибка: неверный формат MR URL. Ожидается URL вида: https://gitlab.../merge_requests/..."
+	if err := ValidateMRURL(a.mrURL); err != nil {
+		a.mrURLError = err.Error()
 		return
 	}
+
+	mrURL := strings.TrimSpace(a.mrURL)
 
 	// Set loading state
 	a.loading = true
@@ -240,7 +240,7 @@ func (a *App) handleGenerate() {
 		a.loading = false
 		if err != nil {
 			// Format error message based on error type
-			a.error = a.formatErrorMessage(err)
+			a.error = FormatErrorMessage(err)
 			a.result = ""
 		} else {
 			a.result = result
@@ -253,60 +253,6 @@ func (a *App) handleGenerate() {
 		// Request a redraw
 		a.window.Invalidate()
 	}()
-}
-
-// isValidMRURL validates that the URL looks like a GitLab merge request URL
-func (a *App) isValidMRURL(url string) bool {
-	// Basic validation: check if it contains merge_requests
-	// and looks like a URL (starts with http:// or https://)
-	url = strings.TrimSpace(url)
-	if url == "" {
-		return false
-	}
-
-	// Check if it starts with http:// or https://
-	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-		return false
-	}
-
-	// Check if it contains "merge_requests" or "merge_request"
-	if !strings.Contains(url, "merge_requests") && !strings.Contains(url, "merge_request") {
-		return false
-	}
-
-	return true
-}
-
-// formatErrorMessage formats error messages in Russian with appropriate context
-func (a *App) formatErrorMessage(err error) string {
-	if err == nil {
-		return ""
-	}
-
-	errMsg := err.Error()
-
-	// Check for common error patterns and provide user-friendly messages
-	switch {
-	case strings.Contains(errMsg, "connection refused"):
-		return "Ошибка сети: не удалось подключиться к серверу. Проверьте подключение к интернету."
-	case strings.Contains(errMsg, "timeout"):
-		return "Ошибка сети: превышено время ожидания ответа от сервера. Попробуйте еще раз."
-	case strings.Contains(errMsg, "no such host"):
-		return "Ошибка сети: не удалось найти сервер. Проверьте URL."
-	case strings.Contains(errMsg, "401") || strings.Contains(errMsg, "unauthorized"):
-		return "Ошибка авторизации: проверьте токены доступа в config.yml."
-	case strings.Contains(errMsg, "403") || strings.Contains(errMsg, "forbidden"):
-		return "Ошибка доступа: недостаточно прав для выполнения операции."
-	case strings.Contains(errMsg, "404") || strings.Contains(errMsg, "not found"):
-		return "Ошибка: ресурс не найден. Проверьте правильность MR URL."
-	case strings.Contains(errMsg, "500") || strings.Contains(errMsg, "internal server error"):
-		return "Ошибка сервера: внутренняя ошибка сервера. Попробуйте позже."
-	case strings.Contains(errMsg, "bad request"):
-		return "Ошибка: неверный запрос. Проверьте правильность введенных данных."
-	default:
-		// Return the original error message with "Ошибка:" prefix
-		return "Ошибка: " + errMsg
-	}
 }
 
 // savePreferences saves the current preferences to disk
@@ -326,34 +272,13 @@ func (a *App) savePreferences() {
 	}
 }
 
-// extractClipboardText extracts text from a transfer.DataEvent
-func extractClipboardText(de transfer.DataEvent) string {
-	// Check if it's text data
-	if de.Type == "text/plain" || de.Type == "text/plain;charset=utf-8" || de.Type == "application/text" {
-		reader := de.Open()
-		if reader == nil {
-			return ""
-		}
-		defer reader.Close()
-
-		// Read the clipboard text
-		data, err := io.ReadAll(reader)
-		if err != nil {
-			return ""
-		}
-
-		return string(data)
-	}
-	return ""
-}
-
 // layout renders the application UI with scrolling support
 func (a *App) layout(gtx layout.Context) layout.Dimensions {
 	return layout.Inset{
 		Top:    unit.Dp(12),
 		Bottom: unit.Dp(12),
-		Left:   unit.Dp(16),
-		Right:  unit.Dp(16),
+		Left:   LargePadding,
+		Right:  LargePadding,
 	}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		// Use a scrollable list to handle overflow
 		return material.List(a.theme, &a.scrollList).Layout(gtx, 1, func(gtx layout.Context, index int) layout.Dimensions {
@@ -384,13 +309,12 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 		// Section title with background
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return layout.Inset{
-				Top:    unit.Dp(4),
+				Top:    SmallPadding,
 				Bottom: unit.Dp(12),
-				Left:   unit.Dp(8),
-				Right:  unit.Dp(8),
+				Left:   StandardPadding,
+				Right:  StandardPadding,
 			}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				label := material.H6(a.theme, "Параметры")
-				return label.Layout(gtx)
+				return CreateSectionTitle(gtx, a.theme, "Параметры")
 			})
 		}),
 
@@ -400,21 +324,20 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 				Axis: layout.Vertical,
 			}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					label := material.Body2(a.theme, "MR URL:")
-					return layout.Inset{Bottom: unit.Dp(6)}.Layout(gtx, label.Layout)
+					return layout.Inset{Bottom: unit.Dp(6)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						return CreateLabel(gtx, a.theme, "MR URL:", BodySize)
+					})
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return layout.Inset{Bottom: unit.Dp(4)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					return layout.Inset{Bottom: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 						return a.mrURLInput.Layout(gtx, a.theme, a.window, "https://git.../merge_requests/...")
 					})
 				}),
 				// MR URL validation error (if any)
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					if a.mrURLError != "" {
-						return layout.Inset{Bottom: unit.Dp(8), Left: unit.Dp(4)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-							label := material.Body2(a.theme, a.mrURLError)
-							label.TextSize = unit.Sp(12)
-							return label.Layout(gtx)
+						return layout.Inset{Bottom: StandardPadding, Left: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+							return CreateLabel(gtx, a.theme, a.mrURLError, SmallSize)
 						})
 					}
 					return layout.Dimensions{}
@@ -422,13 +345,11 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 				// Clipboard error message (if any)
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					if a.clipboardError != "" {
-						return layout.Inset{Bottom: unit.Dp(16), Left: unit.Dp(4)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-							label := material.Body2(a.theme, a.clipboardError)
-							label.TextSize = unit.Sp(12)
-							return label.Layout(gtx)
+						return layout.Inset{Bottom: LargePadding, Left: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+							return CreateLabel(gtx, a.theme, a.clipboardError, SmallSize)
 						})
 					}
-					return layout.Inset{Bottom: unit.Dp(16)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					return layout.Inset{Bottom: LargePadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 						return layout.Dimensions{}
 					})
 				}),
@@ -441,29 +362,13 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 				Axis: layout.Vertical,
 			}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					label := material.Body2(a.theme, "Команда:")
-					return layout.Inset{Bottom: unit.Dp(6)}.Layout(gtx, label.Layout)
+					return layout.Inset{Bottom: unit.Dp(6)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						return CreateLabel(gtx, a.theme, "Команда:", BodySize)
+					})
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					return layout.Inset{Bottom: unit.Dp(12)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-						// Add border around the team input field
-						border := widget.Border{
-							Color:        a.theme.Palette.Fg,
-							Width:        unit.Dp(1),
-							CornerRadius: unit.Dp(4),
-						}
-						return border.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-							return layout.Inset{
-								Top:    unit.Dp(6),
-								Bottom: unit.Dp(6),
-								Left:   unit.Dp(8),
-								Right:  unit.Dp(8),
-							}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-								editor := material.Editor(a.theme, &a.teamEditor, "@team-name")
-								editor.TextSize = unit.Sp(14)
-								return editor.Layout(gtx)
-							})
-						})
+						return CreateBorderedInput(gtx, a.theme, &a.teamEditor, "@team-name")
 					})
 				}),
 			)
@@ -475,15 +380,16 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 				Axis: layout.Vertical,
 			}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					label := material.Body2(a.theme, "Действие:")
-					return layout.Inset{Bottom: unit.Dp(6)}.Layout(gtx, label.Layout)
+					return layout.Inset{Bottom: unit.Dp(6)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						return CreateLabel(gtx, a.theme, "Действие:", BodySize)
+					})
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					return layout.Inset{
-						Top:    unit.Dp(4),
-						Bottom: unit.Dp(4),
-						Left:   unit.Dp(8),
-						Right:  unit.Dp(8),
+						Top:    SmallPadding,
+						Bottom: SmallPadding,
+						Left:   StandardPadding,
+						Right:  StandardPadding,
 					}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 						return layout.Flex{
 							Axis:    layout.Horizontal,
@@ -506,19 +412,20 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 		// Timezone dropdown (only shown when Deploy is selected)
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			if a.action == "deploy" {
-				return layout.Inset{Top: unit.Dp(4)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return layout.Inset{Top: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 					return layout.Flex{
 						Axis: layout.Vertical,
 					}.Layout(gtx,
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							label := material.Body2(a.theme, "Часовой пояс:")
-							return layout.Inset{Bottom: unit.Dp(6)}.Layout(gtx, label.Layout)
+							return layout.Inset{Bottom: unit.Dp(6)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+								return CreateLabel(gtx, a.theme, "Часовой пояс:", BodySize)
+							})
 						}),
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 							return layout.Inset{
-								Left:   unit.Dp(8),
-								Right:  unit.Dp(8),
-								Bottom: unit.Dp(4),
+								Left:   StandardPadding,
+								Right:  StandardPadding,
+								Bottom: SmallPadding,
 							}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 								// Constrain the dropdown width
 								gtx.Constraints.Max.X = gtx.Dp(unit.Dp(250))
@@ -533,7 +440,7 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 
 		// Generate button
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return layout.Inset{Top: unit.Dp(16), Bottom: unit.Dp(4)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			return layout.Inset{Top: LargePadding, Bottom: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 				return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 					btnText := "✨ Сгенерировать"
 					if a.loading {
@@ -545,16 +452,7 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 						gtx = gtx.Disabled()
 					}
 
-					btn := material.Button(a.theme, &a.generateBtn, btnText)
-					btn.TextSize = unit.Sp(16)
-					btn.Inset = layout.Inset{
-						Top:    unit.Dp(10),
-						Bottom: unit.Dp(10),
-						Left:   unit.Dp(24),
-						Right:  unit.Dp(24),
-					}
-					btn.CornerRadius = unit.Dp(6)
-					return btn.Layout(gtx)
+					return CreateButton(gtx, a.theme, &a.generateBtn, btnText, ButtonLarge)
 				})
 			})
 		}),
@@ -562,11 +460,9 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 		// Loading indicator
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			if a.loading {
-				return layout.Inset{Top: unit.Dp(8)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return layout.Inset{Top: StandardPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 					return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-						label := material.Body2(a.theme, "Загрузка данных, пожалуйста подождите...")
-						label.TextSize = unit.Sp(13)
-						return label.Layout(gtx)
+						return CreateLabel(gtx, a.theme, "Загрузка данных, пожалуйста подождите...", unit.Sp(13))
 					})
 				})
 			}
@@ -576,21 +472,19 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 		// General error message (network/API errors)
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			if a.error != "" {
-				return layout.Inset{Top: unit.Dp(8)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return layout.Inset{Top: StandardPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 					return layout.Flex{
 						Axis: layout.Vertical,
 					}.Layout(gtx,
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							// Error box with padding and red background
+							// Error box with padding
 							return layout.Inset{
 								Top:    unit.Dp(12),
 								Bottom: unit.Dp(12),
-								Left:   unit.Dp(16),
-								Right:  unit.Dp(16),
+								Left:   LargePadding,
+								Right:  LargePadding,
 							}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-								label := material.Body2(a.theme, "Ошибка: "+a.error)
-								label.TextSize = unit.Sp(14)
-								return label.Layout(gtx)
+								return CreateLabel(gtx, a.theme, "Ошибка: "+a.error, BodySize)
 							})
 						}),
 					)
@@ -603,20 +497,19 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 
 // layoutResultSection renders the result output section
 func (a *App) layoutResultSection(gtx layout.Context) layout.Dimensions {
-	return layout.Inset{Top: unit.Dp(16), Bottom: unit.Dp(12)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+	return layout.Inset{Top: LargePadding, Bottom: unit.Dp(12)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{
 			Axis: layout.Vertical,
 		}.Layout(gtx,
 			// Section title with background
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				return layout.Inset{
-					Top:    unit.Dp(4),
-					Bottom: unit.Dp(8),
-					Left:   unit.Dp(8),
-					Right:  unit.Dp(8),
+					Top:    SmallPadding,
+					Bottom: StandardPadding,
+					Left:   StandardPadding,
+					Right:  StandardPadding,
 				}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-					label := material.H6(a.theme, "Результат")
-					return label.Layout(gtx)
+					return CreateSectionTitle(gtx, a.theme, "Результат")
 				})
 			}),
 			// Result text area
@@ -625,9 +518,9 @@ func (a *App) layoutResultSection(gtx layout.Context) layout.Dimensions {
 				a.resultOutput.SetText(a.result)
 
 				return layout.Inset{
-					Left:   unit.Dp(8),
-					Right:  unit.Dp(8),
-					Bottom: unit.Dp(8),
+					Left:   StandardPadding,
+					Right:  StandardPadding,
+					Bottom: StandardPadding,
 				}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 					return a.resultOutput.Layout(gtx, a.theme, a.window)
 				})

@@ -1,11 +1,9 @@
 package gui
 
 import (
-	"io"
 	"time"
 
 	"gioui.org/app"
-	"gioui.org/io/transfer"
 	"gioui.org/layout"
 	"gioui.org/unit"
 	"gioui.org/widget"
@@ -34,7 +32,7 @@ func (i *InputWithPaste) Layout(gtx layout.Context, th *material.Theme, w *app.W
 	// Handle paste button click
 	if i.PasteBtn.Clicked(gtx) {
 		// Request clipboard read
-		readClipboard(w, gtx)
+		readClipboard(gtx, w)
 	}
 
 	return layout.Flex{
@@ -42,37 +40,11 @@ func (i *InputWithPaste) Layout(gtx layout.Context, th *material.Theme, w *app.W
 		Alignment: layout.Middle,
 	}.Layout(gtx,
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-			// Add border around the input field
-			border := widget.Border{
-				Color:        th.Palette.Fg,
-				Width:        unit.Dp(1),
-				CornerRadius: unit.Dp(4),
-			}
-			return border.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return layout.Inset{
-					Top:    unit.Dp(6),
-					Bottom: unit.Dp(6),
-					Left:   unit.Dp(8),
-					Right:  unit.Dp(8),
-				}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-					editor := material.Editor(th, &i.Editor, hint)
-					editor.TextSize = unit.Sp(14)
-					return editor.Layout(gtx)
-				})
-			})
+			return CreateBorderedInput(gtx, th, &i.Editor, hint)
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return layout.Inset{Left: unit.Dp(8)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				btn := material.Button(th, &i.PasteBtn, "📋 Вставить")
-				btn.TextSize = unit.Sp(13)
-				btn.Inset = layout.Inset{
-					Top:    unit.Dp(6),
-					Bottom: unit.Dp(6),
-					Left:   unit.Dp(12),
-					Right:  unit.Dp(12),
-				}
-				btn.CornerRadius = unit.Dp(4)
-				return btn.Layout(gtx)
+			return layout.Inset{Left: StandardPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return CreateButton(gtx, th, &i.PasteBtn, "📋 Вставить", ButtonSmall)
 			})
 		}),
 	)
@@ -125,7 +97,7 @@ func (o *OutputWithCopy) Layout(gtx layout.Context, th *material.Theme, w *app.W
 			o.copyError = "Ошибка: нет текста для копирования"
 			o.errorAt = time.Now()
 		} else {
-			err := writeClipboard(w, gtx, o.text)
+			err := writeClipboard(gtx, o.text)
 			if err == nil {
 				o.copied = true
 				o.copiedAt = time.Now()
@@ -162,35 +134,35 @@ func (o *OutputWithCopy) Layout(gtx layout.Context, th *material.Theme, w *app.W
 		// Text display area with border
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return layout.Inset{
-				Top:    unit.Dp(4),
-				Bottom: unit.Dp(4),
+				Top:    SmallPadding,
+				Bottom: SmallPadding,
 			}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				// Add border around the result field
+				// Create a read-only editor for displaying text
+				editor := widget.Editor{
+					SingleLine: false,
+					ReadOnly:   true,
+				}
+				editor.SetText(o.text)
+
+				// Set a reasonable height for the text area
+				gtx.Constraints.Min.Y = gtx.Dp(unit.Dp(100))
+				gtx.Constraints.Max.Y = gtx.Dp(unit.Dp(150))
+
+				// Use CreateBorderedInput but wrap it to handle the read-only editor
 				border := widget.Border{
 					Color:        th.Palette.Fg,
 					Width:        unit.Dp(1),
-					CornerRadius: unit.Dp(4),
+					CornerRadius: StandardCornerRadius,
 				}
 				return border.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 					return layout.Inset{
-						Top:    unit.Dp(8),
-						Bottom: unit.Dp(8),
-						Left:   unit.Dp(8),
-						Right:  unit.Dp(8),
+						Top:    StandardPadding,
+						Bottom: StandardPadding,
+						Left:   StandardPadding,
+						Right:  StandardPadding,
 					}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-						// Create a read-only editor for displaying text
-						editor := widget.Editor{
-							SingleLine: false,
-							ReadOnly:   true,
-						}
-						editor.SetText(o.text)
-
-						// Set a reasonable height for the text area
-						gtx.Constraints.Min.Y = gtx.Dp(unit.Dp(100))
-						gtx.Constraints.Max.Y = gtx.Dp(unit.Dp(150))
-
 						ed := material.Editor(th, &editor, "")
-						ed.TextSize = unit.Sp(14)
+						ed.TextSize = BodySize
 						return ed.Layout(gtx)
 					})
 				})
@@ -198,33 +170,22 @@ func (o *OutputWithCopy) Layout(gtx layout.Context, th *material.Theme, w *app.W
 		}),
 		// Copy button
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return layout.Inset{Top: unit.Dp(8), Bottom: unit.Dp(4)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			return layout.Inset{Top: StandardPadding, Bottom: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 				return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 					btnText := "📋 Скопировать в буфер обмена"
 					if o.copied {
 						btnText = "✅ Скопировано!"
 					}
-					btn := material.Button(th, &o.CopyBtn, btnText)
-					btn.TextSize = unit.Sp(14)
-					btn.Inset = layout.Inset{
-						Top:    unit.Dp(8),
-						Bottom: unit.Dp(8),
-						Left:   unit.Dp(16),
-						Right:  unit.Dp(16),
-					}
-					btn.CornerRadius = unit.Dp(4)
-					return btn.Layout(gtx)
+					return CreateButton(gtx, th, &o.CopyBtn, btnText, ButtonMedium)
 				})
 			})
 		}),
 		// Copy error message (if any)
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			if o.copyError != "" {
-				return layout.Inset{Top: unit.Dp(8), Bottom: unit.Dp(8)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return layout.Inset{Top: StandardPadding, Bottom: StandardPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 					return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-						label := material.Body2(th, o.copyError)
-						label.TextSize = unit.Sp(12)
-						return label.Layout(gtx)
+						return CreateLabel(gtx, th, o.copyError, SmallSize)
 					})
 				})
 			}
@@ -267,7 +228,9 @@ func (d *Dropdown) Layout(gtx layout.Context, th *material.Theme) layout.Dimensi
 			d.selected = index
 		}
 
-		// Determine button style based on selection
+		// Visual feedback for selected item
+		// We need to customize the button for selection, so we'll use material.Button directly
+		// but with constants for sizing
 		btn := material.Button(th, &d.buttons[index], d.options[index])
 		btn.TextSize = unit.Sp(13)
 		btn.Inset = layout.Inset{
@@ -276,9 +239,8 @@ func (d *Dropdown) Layout(gtx layout.Context, th *material.Theme) layout.Dimensi
 			Left:   unit.Dp(12),
 			Right:  unit.Dp(12),
 		}
-		btn.CornerRadius = unit.Dp(4)
+		btn.CornerRadius = StandardCornerRadius
 
-		// Visual feedback for selected item
 		if index == d.selected {
 			// Make selected item more prominent
 			btn.Background = th.Palette.ContrastBg
@@ -310,25 +272,4 @@ func (d *Dropdown) SetSelected(index int) {
 	if index >= 0 && index < len(d.options) {
 		d.selected = index
 	}
-}
-
-// handleClipboardData extracts text from a transfer.DataEvent
-func handleClipboardData(de transfer.DataEvent) string {
-	// Check if it's text data
-	if de.Type == "text/plain" || de.Type == "text/plain;charset=utf-8" || de.Type == "application/text" {
-		reader := de.Open()
-		if reader == nil {
-			return ""
-		}
-		defer reader.Close()
-
-		// Read the clipboard text
-		data, err := io.ReadAll(reader)
-		if err != nil {
-			return ""
-		}
-
-		return string(data)
-	}
-	return ""
 }

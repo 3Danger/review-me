@@ -38,7 +38,7 @@ func (s *Service) DeployPlaning(rawGitlabURL string, after time.Duration) (strin
 		return "", err
 	}
 
-	now := time.Now().In(config.LocationMSK()).Truncate(time.Minute * 15).Add(after)
+	now := time.Now().In(config.LocationMSK()).Add(time.Minute * 15).Truncate(time.Minute * 15).Add(after)
 
 	msg := s.cnf.Team + "\n" + s.cnf.Deploy + " " +
 		"[с " + now.Format("15:04") +
