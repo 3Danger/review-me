@@ -3,3 +3,5 @@ config.yml
 app
 .kiro
 .vscode
+config.yml.back
+bin
