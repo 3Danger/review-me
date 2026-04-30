@@ -17,8 +17,8 @@ import (
 
 const (
 	windowWidth  = unit.Dp(700)
-	windowHeight = unit.Dp(500)
-	resultHeight = unit.Dp(680) // windowHeight + space for result section
+	windowHeight = unit.Dp(420)
+	resultHeight = unit.Dp(600) // windowHeight + space for result section
 )
 
 // App represents the GUI application
@@ -34,7 +34,6 @@ type App struct {
 	actionEnum          widget.Enum
 	timezoneDropdown    *Dropdown
 	migrationsCheckbox  widget.Bool
-	generateBtn         widget.Clickable
 	resultOutput        *OutputWithCopy
 	scrollList          widget.List
 
@@ -49,6 +48,11 @@ type App struct {
 	error              string
 	clipboardError     string
 	mrURLError         string
+
+	// Tracking for auto-trigger
+	lastAction            string
+	lastTimezone          string
+	lastMigrationsApplied bool
 }
 
 // New creates a new GUI application
@@ -92,7 +96,6 @@ func New(service *manager.Service, prefs *preferences.Preferences) *App {
 		teamEditor:       teamEditor,
 		actionEnum:       actionEnum,
 		timezoneDropdown: NewDropdown(timezones, timezoneIndex),
-		generateBtn:      widget.Clickable{},
 		resultOutput:     NewOutputWithCopy(),
 		scrollList: widget.List{
 			List: layout.List{
@@ -108,6 +111,11 @@ func New(service *manager.Service, prefs *preferences.Preferences) *App {
 		result:   "",
 		loading:  false,
 		error:    "",
+
+		// Initialize tracking fields
+		lastAction:            prefs.Action,
+		lastTimezone:          prefs.Timezone,
+		lastMigrationsApplied: false,
 	}
 }
 
@@ -149,6 +157,8 @@ func (a *App) Run() error {
 
 // handleEvents processes UI events and business logic
 func (a *App) handleEvents(gtx layout.Context) {
+	triggerGenerate := false
+
 	// Handle clipboard paste events for the window
 	for {
 		ev, ok := gtx.Event(transfer.TargetFilter{Target: a.window, Type: "application/text"})
@@ -158,55 +168,70 @@ func (a *App) handleEvents(gtx layout.Context) {
 		if de, ok := ev.(transfer.DataEvent); ok {
 			clipboardText := ExtractClipboardText(de)
 			if clipboardText != "" {
-				// Clear any previous clipboard error
 				a.clipboardError = ""
-				// Validate clipboard content is not empty (after trimming whitespace)
 				trimmedText := strings.TrimSpace(clipboardText)
 				if trimmedText == "" {
 					a.clipboardError = "Ошибка: буфер обмена пуст"
 				} else {
-					// Set MR URL field value to clipboard content
 					a.mrURLInput.SetText(trimmedText)
 					a.mrURL = trimmedText
-					// Clear MR URL error when pasting
 					a.mrURLError = ""
+					triggerGenerate = true
 				}
 			} else {
-				// Show error notification if clipboard read fails
 				a.clipboardError = "Ошибка: не удалось прочитать буфер обмена"
 			}
 		}
 	}
 
-	// Handle generate button click
-	if a.generateBtn.Clicked(gtx) && !a.loading {
-		// Clear clipboard error when generating
-		a.clipboardError = ""
-		a.handleGenerate()
+	// Read current UI state (set during previous frame's layout)
+	newAction := a.actionEnum.Value
+	newTimezone := a.timezoneDropdown.SelectedText()
+	newMigrations := a.migrationsCheckbox.Value
+
+	// Detect changes that should trigger generation
+	if newAction != a.lastAction {
+		triggerGenerate = true
+	}
+	if newTimezone != a.lastTimezone {
+		triggerGenerate = true
+	}
+	if newMigrations != a.lastMigrationsApplied {
+		triggerGenerate = true
 	}
 
-	// Update state from UI components
+	// Save for next frame comparison
+	a.lastAction = newAction
+	a.lastTimezone = newTimezone
+	a.lastMigrationsApplied = newMigrations
+
+	// Update current state
+	a.action = newAction
+	a.timezone = newTimezone
+	a.migrationsApplied = newMigrations
+
 	oldMRURL := a.mrURL
 	a.mrURL = a.mrURLInput.Text()
 	a.team = a.teamEditor.Text()
-	a.action = a.actionEnum.Value
-	a.timezone = a.timezoneDropdown.SelectedText()
-	a.migrationsApplied = a.migrationsCheckbox.Value
 
 	// Clear errors if user manually edits the MR URL field
 	if oldMRURL != a.mrURL {
 		a.clipboardError = ""
 		a.mrURLError = ""
-		// Also clear general error if it was related to MR URL
 		if strings.Contains(a.error, "MR URL") || strings.Contains(a.error, "URL") {
 			a.error = ""
 		}
+	}
+
+	// Auto-trigger generation
+	if triggerGenerate && !a.loading && strings.TrimSpace(a.mrURL) != "" {
+		a.clipboardError = ""
+		a.handleGenerate()
 	}
 }
 
 // handleGenerate processes the generate button click and calls the appropriate service method
 func (a *App) handleGenerate() {
-	// Clear previous errors
 	a.error = ""
 	a.mrURLError = ""
 
@@ -234,19 +259,15 @@ func (a *App) handleGenerate() {
 		var result string
 		var err error
 
-		// Call appropriate service method based on action
 		switch a.action {
 		case "review":
 			result, err = a.service.ReviewMe(mrURL)
 		case "deploy":
-			// Use 0 duration for immediate deployment
 			result, err = a.service.DeployPlaningWithTimezone(mrURL, 0, a.timezone, a.migrationsApplied)
 		default:
-			// Default to review if action is not recognized
 			result, err = a.service.ReviewMe(mrURL)
 		}
 
-		// Update UI state (this will be picked up in the next frame)
 		a.loading = false
 		if err != nil {
 			a.error = FormatErrorMessage(err)
@@ -256,12 +277,9 @@ func (a *App) handleGenerate() {
 			a.result = result
 			a.error = ""
 			a.window.Option(app.Size(windowWidth, resultHeight))
-
-			// Save preferences after successful message generation
 			a.savePreferences()
 		}
 
-		// Request a redraw
 		a.window.Invalidate()
 	}()
 }
@@ -269,16 +287,11 @@ func (a *App) handleGenerate() {
 // savePreferences saves the current preferences to disk
 // Errors are logged but don't block the application
 func (a *App) savePreferences() {
-	// Update preferences with current values
 	a.prefs.Action = a.action
 	a.prefs.Timezone = a.timezone
 	a.prefs.Team = a.team
 
-	// Save to disk
 	if err := a.prefs.Save(); err != nil {
-		// Log error but don't block the application
-		// In a production app, you might want to use a proper logger
-		// For now, we'll just silently fail as per requirements
 		_ = err
 	}
 }
@@ -415,7 +428,6 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 								Left:   StandardPadding,
 								Bottom: SmallPadding,
 							}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-								// Constrain the dropdown width
 								gtx.Constraints.Max.X = gtx.Dp(unit.Dp(250))
 								return a.timezoneDropdown.Layout(gtx, a.theme)
 							})
@@ -441,25 +453,6 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 			return layout.Dimensions{}
 		}),
 
-		// Generate button
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return layout.Inset{Top: StandardPadding, Bottom: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-					btnText := "✨ Сгенерировать"
-					if a.loading {
-						btnText = "⏳ Обработка..."
-					}
-
-					// Disable button during loading
-					if a.loading {
-						gtx = gtx.Disabled()
-					}
-
-					return CreateButton(gtx, a.theme, &a.generateBtn, btnText, ButtonLarge)
-				})
-			})
-		}),
-
 		// Loading indicator
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			if a.loading {
@@ -480,7 +473,6 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 						Axis: layout.Vertical,
 					}.Layout(gtx,
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							// Error box with padding
 							return layout.Inset{
 								Top:    StandardPadding,
 								Bottom: StandardPadding,
@@ -504,7 +496,6 @@ func (a *App) layoutResultSection(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{
 			Axis: layout.Vertical,
 		}.Layout(gtx,
-			// Section title with background
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				return layout.Inset{
 					Bottom: SmallPadding,
@@ -514,9 +505,7 @@ func (a *App) layoutResultSection(gtx layout.Context) layout.Dimensions {
 					return CreateSectionTitle(gtx, a.theme, "Результат")
 				})
 			}),
-			// Result text area
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				// Update the result output component with current result
 				a.resultOutput.SetText(a.result)
 
 				return layout.Inset{
