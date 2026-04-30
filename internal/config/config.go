@@ -1,12 +1,12 @@
 package config
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
 var timeLocationMSK *time.Location
@@ -24,44 +24,99 @@ func LocationMSK() *time.Location {
 }
 
 type Config struct {
-	Jira    Jira    `yaml:"jira"`
-	Gitlab  Gitlab  `yaml:"gitlab"`
-	Message Message `yaml:"message"`
+	Jira    Jira
+	Gitlab  Gitlab
+	Message Message
 }
 
 type Message struct {
-	Team   string `yaml:"team"`
-	Review string `yaml:"review"`
-	Deploy string `yaml:"deploy"`
+	Team   string
+	Review string
+	Deploy string
 }
 
 type Jira struct {
-	BaseURL string `yaml:"baseURL"`
-	User    string `yaml:"user" required:"true"`
-	Pass    string `yaml:"password" required:"true"`
+	BaseURL string
+	User    string
+	Pass    string
 }
 
 type Gitlab struct {
-	BaseURL string `yaml:"baseURL"`
-	Token   string `yaml:"token" required:"true"`
+	BaseURL string
+	Token   string
 }
 
-func Load(fileName string) (*Config, error) {
+func Load() (*Config, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("getting current working directory: %w", err)
 	}
 
-	file, err := os.Open(filepath.Join(cwd, fileName))
+	envMap, err := readEnvFile(filepath.Join(cwd, ".env"))
 	if err != nil {
-		return nil, fmt.Errorf("openning config file: %w", err)
+		return nil, fmt.Errorf("reading .env file: %w", err)
+	}
+
+	c := &Config{
+		Jira: Jira{
+			BaseURL: lookup("JIRA_BASE_URL", envMap),
+			User:    lookup("JIRA_USER", envMap),
+			Pass:    lookup("JIRA_PASSWORD", envMap),
+		},
+		Gitlab: Gitlab{
+			BaseURL: lookup("GITLAB_BASE_URL", envMap),
+			Token:   lookup("GITLAB_TOKEN", envMap),
+		},
+		Message: Message{
+			Team:   lookup("MESSAGE_TEAM", envMap),
+			Review: lookup("MESSAGE_REVIEW", envMap),
+			Deploy: lookup("MESSAGE_DEPLOY", envMap),
+		},
+	}
+
+	return c, nil
+}
+
+func lookup(key string, envMap map[string]string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return envMap[key]
+}
+
+func readEnvFile(path string) (map[string]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return make(map[string]string), nil
+		}
+		return nil, err
 	}
 	defer file.Close()
 
-	var c Config
-	if err := yaml.NewDecoder(file).Decode(&c); err != nil {
-		return nil, fmt.Errorf("decoding config file: %w", err)
+	result := make(map[string]string)
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		line = strings.TrimPrefix(line, "export ")
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		val := strings.TrimSpace(parts[1])
+		if len(val) >= 2 {
+			if (val[0] == '"' && val[len(val)-1] == '"') || (val[0] == '\'' && val[len(val)-1] == '\'') {
+				val = val[1 : len(val)-1]
+			}
+		}
+		result[key] = val
 	}
-
-	return &c, nil
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }

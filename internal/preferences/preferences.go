@@ -121,7 +121,7 @@ func getDefaults() *Preferences {
 	return &Preferences{
 		Action:      "review",
 		Timezone:    "Europe/Moscow",
-		Team:        "", // Will be populated from config.yml when GUI initializes
+		Team:        "", // Will be populated from .env when GUI initializes
 		LastUpdated: time.Now(),
 	}
 }

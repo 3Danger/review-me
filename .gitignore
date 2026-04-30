@@ -1,7 +1,6 @@
 .idea
-config.yml
+.env
 app
 .kiro
 .vscode
-config.yml.back
 bin

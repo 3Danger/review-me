@@ -177,7 +177,7 @@ func TestFormatErrorMessage(t *testing.T) {
 		{
 			name:     "401 unauthorized",
 			errMsg:   "401 unauthorized",
-			expected: "Ошибка авторизации: проверьте токены доступа в config.yml.",
+			expected: "Ошибка авторизации: проверьте токены доступа в .env файле.",
 		},
 		{
 			name:     "403 forbidden",

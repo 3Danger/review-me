@@ -19,7 +19,7 @@ func FormatErrorMessage(err error) string {
 	case strings.Contains(errMsg, "no such host"):
 		return "Ошибка сети: не удалось найти сервер. Проверьте URL."
 	case strings.Contains(errMsg, "401") || strings.Contains(errMsg, "unauthorized"):
-		return "Ошибка авторизации: проверьте токены доступа в config.yml."
+		return "Ошибка авторизации: проверьте токены доступа в .env файле."
 	case strings.Contains(errMsg, "403") || strings.Contains(errMsg, "forbidden"):
 		return "Ошибка доступа: недостаточно прав для выполнения операции."
 	case strings.Contains(errMsg, "404") || strings.Contains(errMsg, "not found"):

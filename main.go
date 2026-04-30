@@ -68,7 +68,7 @@ func runGUI() error {
 
 	// Load config
 	slog.Info("Loading config...")
-	cnf, err := config.Load("config.yml")
+	cnf, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
@@ -126,7 +126,7 @@ func runCLI() error {
 		os.Args = append(os.Args, "https://git.vseinstrumenti.net/fd/account-balance/-/merge_requests/591")
 	}
 
-	cnf, err := config.Load("config.yml")
+	cnf, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}

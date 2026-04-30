@@ -17,10 +17,19 @@ import (
 
 // TestEndToEndCLI tests the complete CLI flow
 func TestEndToEndCLI(t *testing.T) {
+	// Save and restore CWD
+	origCwd, _ := os.Getwd()
+	defer os.Chdir(origCwd)
+
+	// Change to project root to find .env
+	if err := os.Chdir(".."); err != nil {
+		t.Fatalf("failed to change to project root: %v", err)
+	}
+
 	// Load config
-	cnf, err := config.Load("../config.yml")
+	cnf, err := config.Load()
 	if err != nil {
-		t.Skipf("Skipping test: config.yml not found: %v", err)
+		t.Skipf("Skipping test: .env not found: %v", err)
 	}
 
 	// Create services
@@ -93,10 +102,19 @@ func TestPreferencesPersistence(t *testing.T) {
 
 // TestGUIInitialization tests that GUI components can be initialized
 func TestGUIInitialization(t *testing.T) {
+	// Save and restore CWD
+	origCwd, _ := os.Getwd()
+	defer os.Chdir(origCwd)
+
+	// Change to project root to find .env
+	if err := os.Chdir(".."); err != nil {
+		t.Fatalf("failed to change to project root: %v", err)
+	}
+
 	// Load config
-	cnf, err := config.Load("../config.yml")
+	cnf, err := config.Load()
 	if err != nil {
-		t.Skipf("Skipping test: config.yml not found: %v", err)
+		t.Skipf("Skipping test: .env not found: %v", err)
 	}
 
 	// Create preferences

@@ -29,11 +29,12 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - `gofmt -w .`
 
 ## Runtime requirements and configuration
-- The app expects a `config.yml` in the current working directory when starting (`config.Load("config.yml")` in `main.go`).
-- `config.yml` must include:
-  - `gitlab.baseURL`, `gitlab.token`
-  - `jira.baseURL`, `jira.user`, `jira.password`
-  - `message.team`, `message.review`, `message.deploy`
+- The app expects a `.env` file in the current working directory when starting (`config.Load()` in `main.go`).
+- `.env` must include:
+  - `GITLAB_BASE_URL`, `GITLAB_TOKEN`
+  - `JIRA_BASE_URL`, `JIRA_USER`, `JIRA_PASSWORD`
+  - `MESSAGE_TEAM`, `MESSAGE_REVIEW`, `MESSAGE_DEPLOY`
+- System environment variables with the same names override `.env` values.
 - GUI preferences are persisted per OS in JSON via `internal/preferences/preferences.go`:
   - macOS: `~/Library/Application Support/review-info/preferences.json`
   - Linux: `~/.config/review-info/preferences.json` (or `$XDG_CONFIG_HOME/review-info/preferences.json`)
@@ -58,7 +59,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 - `internal/pkg/shower`: orchestration + URL/branch parsing and domain message assembly.
 - `internal/service/manager`: final human-readable message formatting and deploy time-window logic.
 - `internal/gui`: Gio UI components/events, input validation, error text mapping, clipboard integration.
-- `internal/config`: YAML config loading and Moscow timezone helper.
+- `internal/config`: env-file config loading and Moscow timezone helper.
 - `internal/preferences`: persisted GUI defaults (action/timezone/team).
 
 ## Important implementation notes
