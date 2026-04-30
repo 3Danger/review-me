@@ -18,7 +18,7 @@ import (
 const (
 	windowWidth  = unit.Dp(700)
 	windowHeight = unit.Dp(500)
-	resultHeight = unit.Dp(820)
+	resultHeight = unit.Dp(680) // windowHeight + space for result section
 )
 
 // App represents the GUI application
@@ -224,7 +224,7 @@ func (a *App) handleGenerate() {
 
 	mrURL := strings.TrimSpace(a.mrURL)
 
-	// Set loading state
+	// Set loading state and shrink window to base height
 	a.loading = true
 	a.result = ""
 	a.window.Option(app.Size(windowWidth, windowHeight))
@@ -249,7 +249,6 @@ func (a *App) handleGenerate() {
 		// Update UI state (this will be picked up in the next frame)
 		a.loading = false
 		if err != nil {
-			// Format error message based on error type
 			a.error = FormatErrorMessage(err)
 			a.result = ""
 			a.window.Option(app.Size(windowWidth, windowHeight))
@@ -287,21 +286,18 @@ func (a *App) savePreferences() {
 // layout renders the application UI with scrolling support
 func (a *App) layout(gtx layout.Context) layout.Dimensions {
 	return layout.Inset{
-		Top:    unit.Dp(12),
-		Bottom: unit.Dp(12),
-		Left:   LargePadding,
-		Right:  LargePadding,
+		Top:    StandardPadding,
+		Bottom: StandardPadding,
+		Left:   StandardPadding,
+		Right:  StandardPadding,
 	}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		// Use a scrollable list to handle overflow
 		return material.List(a.theme, &a.scrollList).Layout(gtx, 1, func(gtx layout.Context, index int) layout.Dimensions {
 			return layout.Flex{
 				Axis: layout.Vertical,
 			}.Layout(gtx,
-				// Input section
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					return a.layoutInputSection(gtx)
 				}),
-				// Result section (only shown when there's a result)
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					if a.result != "" {
 						return a.layoutResultSection(gtx)
@@ -318,25 +314,13 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 	return layout.Flex{
 		Axis: layout.Vertical,
 	}.Layout(gtx,
-		// Section title with background
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return layout.Inset{
-				Top:    SmallPadding,
-				Bottom: unit.Dp(12),
-				Left:   StandardPadding,
-				Right:  StandardPadding,
-			}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return CreateSectionTitle(gtx, a.theme, "Параметры")
-			})
-		}),
-
 		// MR URL input with paste button
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{
 				Axis: layout.Vertical,
 			}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return layout.Inset{Bottom: unit.Dp(6)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					return layout.Inset{Bottom: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 						return CreateLabel(gtx, a.theme, "MR URL:", BodySize)
 					})
 				}),
@@ -348,7 +332,7 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 				// MR URL validation error (if any)
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					if a.mrURLError != "" {
-						return layout.Inset{Bottom: StandardPadding, Left: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						return layout.Inset{Bottom: SmallPadding, Left: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 							return CreateLabel(gtx, a.theme, a.mrURLError, SmallSize)
 						})
 					}
@@ -357,13 +341,11 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 				// Clipboard error message (if any)
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					if a.clipboardError != "" {
-						return layout.Inset{Bottom: LargePadding, Left: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						return layout.Inset{Bottom: SmallPadding, Left: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 							return CreateLabel(gtx, a.theme, a.clipboardError, SmallSize)
 						})
 					}
-					return layout.Inset{Bottom: LargePadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-						return layout.Dimensions{}
-					})
+					return layout.Dimensions{}
 				}),
 			)
 		}),
@@ -374,12 +356,12 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 				Axis: layout.Vertical,
 			}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return layout.Inset{Bottom: unit.Dp(6)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					return layout.Inset{Bottom: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 						return CreateLabel(gtx, a.theme, "Команда:", BodySize)
 					})
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return layout.Inset{Bottom: unit.Dp(12)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					return layout.Inset{Bottom: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 						return CreateBorderedInput(gtx, a.theme, &a.teamEditor, "@team-name")
 					})
 				}),
@@ -392,17 +374,12 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 				Axis: layout.Vertical,
 			}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return layout.Inset{Bottom: unit.Dp(6)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					return layout.Inset{Bottom: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 						return CreateLabel(gtx, a.theme, "Действие:", BodySize)
 					})
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return layout.Inset{
-						Top:    SmallPadding,
-						Bottom: SmallPadding,
-						Left:   StandardPadding,
-						Right:  StandardPadding,
-					}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					return layout.Inset{Bottom: SmallPadding, Left: StandardPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 						return layout.Flex{
 							Axis:    layout.Horizontal,
 							Spacing: layout.SpaceSides,
@@ -429,14 +406,13 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 						Axis: layout.Vertical,
 					}.Layout(gtx,
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return layout.Inset{Bottom: unit.Dp(6)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+							return layout.Inset{Bottom: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 								return CreateLabel(gtx, a.theme, "Часовой пояс:", BodySize)
 							})
 						}),
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 							return layout.Inset{
 								Left:   StandardPadding,
-								Right:  StandardPadding,
 								Bottom: SmallPadding,
 							}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 								// Constrain the dropdown width
@@ -454,7 +430,6 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			if a.action == "deploy" {
 				return layout.Inset{
-					Top:    SmallPadding,
 					Bottom: SmallPadding,
 					Left:   StandardPadding,
 				}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
@@ -468,7 +443,7 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 
 		// Generate button
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return layout.Inset{Top: LargePadding, Bottom: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			return layout.Inset{Top: StandardPadding, Bottom: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 				return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 					btnText := "✨ Сгенерировать"
 					if a.loading {
@@ -488,7 +463,7 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 		// Loading indicator
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			if a.loading {
-				return layout.Inset{Top: StandardPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return layout.Inset{Top: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 					return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 						return CreateLabel(gtx, a.theme, "Загрузка данных, пожалуйста подождите...", unit.Sp(13))
 					})
@@ -500,17 +475,17 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 		// General error message (network/API errors)
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			if a.error != "" {
-				return layout.Inset{Top: StandardPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return layout.Inset{Top: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 					return layout.Flex{
 						Axis: layout.Vertical,
 					}.Layout(gtx,
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 							// Error box with padding
 							return layout.Inset{
-								Top:    unit.Dp(12),
-								Bottom: unit.Dp(12),
-								Left:   LargePadding,
-								Right:  LargePadding,
+								Top:    StandardPadding,
+								Bottom: StandardPadding,
+								Left:   StandardPadding,
+								Right:  StandardPadding,
 							}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 								return CreateLabel(gtx, a.theme, "Ошибка: "+a.error, BodySize)
 							})
@@ -525,15 +500,14 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 
 // layoutResultSection renders the result output section
 func (a *App) layoutResultSection(gtx layout.Context) layout.Dimensions {
-	return layout.Inset{Top: LargePadding, Bottom: unit.Dp(12)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+	return layout.Inset{Top: StandardPadding, Bottom: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Flex{
 			Axis: layout.Vertical,
 		}.Layout(gtx,
 			// Section title with background
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				return layout.Inset{
-					Top:    SmallPadding,
-					Bottom: StandardPadding,
+					Bottom: SmallPadding,
 					Left:   StandardPadding,
 					Right:  StandardPadding,
 				}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
