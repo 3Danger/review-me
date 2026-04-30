@@ -1,5 +1,17 @@
 package models
 
+type MergeRequestChanges struct {
+	Changes []Change `json:"changes"`
+}
+
+type Change struct {
+	OldPath     string `json:"old_path"`
+	NewPath     string `json:"new_path"`
+	NewFile     bool   `json:"new_file"`
+	RenamedFile bool   `json:"renamed_file"`
+	DeletedFile bool   `json:"deleted_file"`
+}
+
 type MergeRequest struct {
 	ID           int    `json:"id"`
 	IID          int    `json:"iid"`

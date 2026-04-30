@@ -40,11 +40,12 @@ func (s *Service) DeployPlaning(rawGitlabURL string, after time.Duration) (strin
 
 	now := time.Now().In(config.LocationMSK()).Add(time.Minute * 15).Truncate(time.Minute * 15).Add(after)
 
-	msg := s.cnf.Team + "\n" + s.cnf.Deploy + " " +
-		"[с " + now.Format("15:04") +
+	msg := s.cnf.Team +
+		"\n" + s.cnf.Deploy + ": с " + now.Format("15:04") +
 		" по " + now.Add(time.Minute*30).Format("15:04") +
-		"]: По сервису " + info.ServiceName +
-		"\n" + info.Short()
+		"\nСервис: " + info.ServiceName +
+		"\n" + info.Short() +
+		"\n" + migrationLine(info.HasMigrations)
 
 	return msg, nil
 }
@@ -62,11 +63,19 @@ func (s *Service) DeployPlaningWithTimezone(rawGitlabURL string, after time.Dura
 
 	now := time.Now().In(loc).Truncate(time.Minute * 15).Add(after)
 
-	msg := s.cnf.Team + "\n" + s.cnf.Deploy + " " +
-		"[с " + now.Format("15:04") +
+	msg := s.cnf.Team +
+		"\n" + s.cnf.Deploy + ": с " + now.Format("15:04") +
 		" по " + now.Add(time.Minute*30).Format("15:04") +
-		"]: По сервису " + info.ServiceName +
-		"\n" + info.Short()
+		"\nСервис: " + info.ServiceName +
+		"\n" + info.Short() +
+		"\n" + migrationLine(info.HasMigrations)
 
 	return msg, nil
+}
+
+func migrationLine(hasMigrations bool) string {
+	if hasMigrations {
+		return "Миграции есть: :checkbox-empty:"
+	}
+	return "Миграций нет: :checkbox-selected:"
 }

@@ -81,6 +81,17 @@ func (s *Service) Process(mergeRequestURL string) (*models.Message, error) {
 		return nil, fmt.Errorf("getting task: %w", err)
 	}
 
+	var hasMigrations bool
+	changes, err := s.gitlab.MergeRequestChanges(path, mrID)
+	if err == nil {
+		for _, change := range changes.Changes {
+			if isMigrationFile(change.OldPath) || isMigrationFile(change.NewPath) {
+				hasMigrations = true
+				break
+			}
+		}
+	}
+
 	return &models.Message{
 		ServiceName: lastPart('/', path),
 		MergeRequest: models.MergeRequest{
@@ -88,11 +99,17 @@ func (s *Service) Process(mergeRequestURL string) (*models.Message, error) {
 			MergeRequestURL: mergeRequestURL,
 		},
 		JiraTask: models.JiraTask{
-			ID:      task.Key,
-			Host:    "https://jsw.vseinstrumenti.ru/browse",
-			Summary: task.Fields.Summary,
+			ID:        task.Key,
+			Host:      "https://jsw.vseinstrumenti.ru/browse",
+			Summary:   task.Fields.Summary,
+			IssueType: task.Fields.Issuetype.Name,
 		},
+		HasMigrations: hasMigrations,
 	}, nil
+}
+
+func isMigrationFile(path string) bool {
+	return strings.Contains(path, "/migration/") && strings.HasSuffix(path, ".sql")
 }
 
 func lastPart(delim rune, path string) string {
