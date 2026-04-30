@@ -7,6 +7,11 @@ import (
 	"review-info/internal/pkg/shower"
 )
 
+const (
+	timeRoundStep = 15 * time.Minute
+	deployWindow  = 30 * time.Minute
+)
+
 type Service struct {
 	svc *shower.Service
 	cnf config.Message
@@ -38,11 +43,11 @@ func (s *Service) DeployPlaning(rawGitlabURL string, after time.Duration, migrat
 		return "", err
 	}
 
-	now := time.Now().In(config.LocationMSK()).Add(time.Minute * 15).Truncate(time.Minute * 15).Add(after)
+	now := time.Now().In(config.LocationMSK()).Add(timeRoundStep).Truncate(timeRoundStep).Add(after)
 
 	msg := s.cnf.Team +
 		"\n" + s.cnf.Deploy + ": с " + now.Format("15:04") +
-		" по " + now.Add(time.Minute*30).Format("15:04") +
+		" по " + now.Add(deployWindow).Format("15:04") +
 		"\nСервис: " + info.ServiceName +
 		"\n" + info.Short() +
 		"\n" + migrationLine(info.HasMigrations, migrationsApplied)
@@ -61,11 +66,11 @@ func (s *Service) DeployPlaningWithTimezone(rawGitlabURL string, after time.Dura
 		return "", err
 	}
 
-	now := time.Now().In(loc).Truncate(time.Minute * 15).Add(after)
+	now := time.Now().In(loc).Add(timeRoundStep).Truncate(timeRoundStep).Add(after)
 
 	msg := s.cnf.Team +
 		"\n" + s.cnf.Deploy + ": с " + now.Format("15:04") +
-		" по " + now.Add(time.Minute*30).Format("15:04") +
+		" по " + now.Add(deployWindow).Format("15:04") +
 		"\nСервис: " + info.ServiceName +
 		"\n" + info.Short() +
 		"\n" + migrationLine(info.HasMigrations, migrationsApplied)
