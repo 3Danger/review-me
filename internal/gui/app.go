@@ -15,6 +15,12 @@ import (
 	"review-info/internal/service/manager"
 )
 
+const (
+	windowWidth  = unit.Dp(700)
+	windowHeight = unit.Dp(500)
+	resultHeight = unit.Dp(820)
+)
+
 // App represents the GUI application
 type App struct {
 	window  *app.Window
@@ -116,7 +122,7 @@ func (a *App) Run() error {
 	a.window = new(app.Window)
 	a.window.Option(
 		app.Title("Review Info - GUI"),
-		app.Size(unit.Dp(700), unit.Dp(500)),
+		app.Size(windowWidth, windowHeight),
 	)
 
 	// Start event loop
@@ -221,6 +227,7 @@ func (a *App) handleGenerate() {
 	// Set loading state
 	a.loading = true
 	a.result = ""
+	a.window.Option(app.Size(windowWidth, windowHeight))
 
 	// Process in a goroutine to avoid blocking the UI
 	go func() {
@@ -245,9 +252,11 @@ func (a *App) handleGenerate() {
 			// Format error message based on error type
 			a.error = FormatErrorMessage(err)
 			a.result = ""
+			a.window.Option(app.Size(windowWidth, windowHeight))
 		} else {
 			a.result = result
 			a.error = ""
+			a.window.Option(app.Size(windowWidth, resultHeight))
 
 			// Save preferences after successful message generation
 			a.savePreferences()
