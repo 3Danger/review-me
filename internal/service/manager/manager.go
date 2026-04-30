@@ -31,7 +31,8 @@ func (s *Service) ReviewMe(rawGitlabURL string) (string, error) {
 	}
 
 	msg := s.cnf.Team +
-		"\n" + s.cnf.Review + ", " + "Сервис: " + info.ServiceName +
+		"\n" + s.cnf.Review +
+		"\nСервис: " + info.ServiceName +
 		"\n" + info.Short()
 
 	return msg, nil
