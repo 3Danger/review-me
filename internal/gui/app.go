@@ -23,24 +23,26 @@ type App struct {
 	service *manager.Service
 
 	// UI Components
-	mrURLInput       *InputWithPaste
-	teamEditor       widget.Editor
-	actionEnum       widget.Enum
-	timezoneDropdown *Dropdown
-	generateBtn      widget.Clickable
-	resultOutput     *OutputWithCopy
-	scrollList       widget.List
+	mrURLInput          *InputWithPaste
+	teamEditor          widget.Editor
+	actionEnum          widget.Enum
+	timezoneDropdown    *Dropdown
+	migrationsCheckbox  widget.Bool
+	generateBtn         widget.Clickable
+	resultOutput        *OutputWithCopy
+	scrollList          widget.List
 
 	// State
-	mrURL          string
-	team           string
-	action         string
-	timezone       string
-	result         string
-	loading        bool
-	error          string
-	clipboardError string
-	mrURLError     string
+	mrURL              string
+	team               string
+	action             string
+	timezone           string
+	migrationsApplied  bool
+	result             string
+	loading            bool
+	error              string
+	clipboardError     string
+	mrURLError         string
 }
 
 // New creates a new GUI application
@@ -183,6 +185,7 @@ func (a *App) handleEvents(gtx layout.Context) {
 	a.team = a.teamEditor.Text()
 	a.action = a.actionEnum.Value
 	a.timezone = a.timezoneDropdown.SelectedText()
+	a.migrationsApplied = a.migrationsCheckbox.Value
 
 	// Clear errors if user manually edits the MR URL field
 	if oldMRURL != a.mrURL {
@@ -230,7 +233,7 @@ func (a *App) handleGenerate() {
 			result, err = a.service.ReviewMe(mrURL)
 		case "deploy":
 			// Use 0 duration for immediate deployment
-			result, err = a.service.DeployPlaningWithTimezone(mrURL, 0, a.timezone)
+			result, err = a.service.DeployPlaningWithTimezone(mrURL, 0, a.timezone, a.migrationsApplied)
 		default:
 			// Default to review if action is not recognized
 			result, err = a.service.ReviewMe(mrURL)
@@ -433,6 +436,22 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 							})
 						}),
 					)
+				})
+			}
+			return layout.Dimensions{}
+		}),
+
+		// Migrations checkbox (only shown when Deploy is selected)
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			if a.action == "deploy" {
+				return layout.Inset{
+					Top:    SmallPadding,
+					Bottom: SmallPadding,
+					Left:   StandardPadding,
+				}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					checkBox := material.CheckBox(a.theme, &a.migrationsCheckbox, "Миграции применены в проде")
+					checkBox.TextSize = BodySize
+					return checkBox.Layout(gtx)
 				})
 			}
 			return layout.Dimensions{}

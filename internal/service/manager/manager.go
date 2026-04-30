@@ -32,7 +32,7 @@ func (s *Service) ReviewMe(rawGitlabURL string) (string, error) {
 	return msg, nil
 }
 
-func (s *Service) DeployPlaning(rawGitlabURL string, after time.Duration) (string, error) {
+func (s *Service) DeployPlaning(rawGitlabURL string, after time.Duration, migrationsApplied bool) (string, error) {
 	info, err := s.svc.Process(rawGitlabURL)
 	if err != nil {
 		return "", err
@@ -45,12 +45,12 @@ func (s *Service) DeployPlaning(rawGitlabURL string, after time.Duration) (strin
 		" по " + now.Add(time.Minute*30).Format("15:04") +
 		"\nСервис: " + info.ServiceName +
 		"\n" + info.Short() +
-		"\n" + migrationLine(info.HasMigrations)
+		"\n" + migrationLine(info.HasMigrations, migrationsApplied)
 
 	return msg, nil
 }
 
-func (s *Service) DeployPlaningWithTimezone(rawGitlabURL string, after time.Duration, timezone string) (string, error) {
+func (s *Service) DeployPlaningWithTimezone(rawGitlabURL string, after time.Duration, timezone string, migrationsApplied bool) (string, error) {
 	info, err := s.svc.Process(rawGitlabURL)
 	if err != nil {
 		return "", err
@@ -68,13 +68,16 @@ func (s *Service) DeployPlaningWithTimezone(rawGitlabURL string, after time.Dura
 		" по " + now.Add(time.Minute*30).Format("15:04") +
 		"\nСервис: " + info.ServiceName +
 		"\n" + info.Short() +
-		"\n" + migrationLine(info.HasMigrations)
+		"\n" + migrationLine(info.HasMigrations, migrationsApplied)
 
 	return msg, nil
 }
 
-func migrationLine(hasMigrations bool) string {
+func migrationLine(hasMigrations bool, migrationsApplied bool) string {
 	if hasMigrations {
+		if migrationsApplied {
+			return "Миграции есть и применены в проде: :checkbox-selected:"
+		}
 		return "Миграции есть: :checkbox-empty:"
 	}
 	return "Миграций нет: :checkbox-selected:"

@@ -161,7 +161,7 @@ func runCLI() error {
 	case "review":
 		message, err = svc.ReviewMe(*mrURL)
 	case "deploy":
-		message, err = svc.DeployPlaning(*mrURL, time.Minute*30)
+		message, err = svc.DeployPlaning(*mrURL, time.Minute*30, false)
 	}
 
 	if err != nil {
