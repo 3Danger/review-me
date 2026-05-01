@@ -11,6 +11,7 @@ import (
 	"review-info/internal/pkg/gitlab"
 	"review-info/internal/pkg/jira"
 	"review-info/internal/pkg/shower"
+	"review-info/internal/domain"
 	"review-info/internal/preferences"
 	"review-info/internal/service/manager"
 )
@@ -42,11 +43,11 @@ func TestEndToEndCLI(t *testing.T) {
 		),
 	)
 
-	// Test ReviewMe
+	// Test review action via Execute
 	mrURL := "https://git.vseinstrumenti.net/fd/account-balance/-/merge_requests/591"
-	message, err := svc.ReviewMe(mrURL)
+	message, err := svc.Execute("review", mrURL, domain.ActionOptions{})
 	if err != nil {
-		t.Fatalf("ReviewMe failed: %v", err)
+		t.Fatalf("Execute review failed: %v", err)
 	}
 
 	if message == "" {

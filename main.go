@@ -13,6 +13,7 @@ import (
 	"review-info/internal/pkg/gitlab"
 	"review-info/internal/pkg/jira"
 	"review-info/internal/pkg/shower"
+	"review-info/internal/domain"
 	"review-info/internal/preferences"
 	"review-info/internal/service/manager"
 )
@@ -153,16 +154,10 @@ func runCLI() error {
 		),
 	)
 
-	var (
-		message string
-	)
-
-	switch *action {
-	case "review":
-		message, err = svc.ReviewMe(*mrURL)
-	case "deploy":
-		message, err = svc.DeployPlaning(*mrURL, time.Minute*30, false)
-	}
+	message, err := svc.Execute(*action, *mrURL, domain.ActionOptions{
+		After:    time.Minute * 30,
+		Timezone: "Europe/Moscow",
+	})
 
 	if err != nil {
 		return fmt.Errorf("format: %w", err)

@@ -4,23 +4,20 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 
 	"review-info/internal/config"
+	"review-info/internal/domain"
 	"review-info/internal/pkg/jira/models"
 )
 
 type Service struct {
 	config config.Jira
-	client client
+	client domain.HTTPClient
 }
 
-type client interface {
-	Do(req *http.Request) (*http.Response, error)
-}
-
-func New(client client, config config.Jira) *Service {
+func New(client domain.HTTPClient, config config.Jira) *Service {
 	return &Service{
 		config: config,
 		client: client,
@@ -46,7 +43,7 @@ func (s *Service) Get(issueKey string) (*models.Jira, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 
 		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(body))
 	}

@@ -2,6 +2,7 @@ package gitlab_test
 
 import (
 	"net/http"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,7 +17,7 @@ func TestMain(t *testing.M) {
 
 	cnf := config.Gitlab{
 		BaseURL: "https://git.vseinstrumenti.net",
-		Token:   "glpat-iLKuBise9qsx6hVyWhCs",
+		Token:   os.Getenv("GITLAB_TOKEN"),
 	}
 
 	svc = gitlab.New(client, cnf) // Здесь должен быть реальный HTTP клиент и конфигурация GitLab

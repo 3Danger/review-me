@@ -37,3 +37,7 @@ build-linux:
 clean:
 	@echo "Cleaning build directory..."
 	@rm -rf $(BUILD_DIR)
+
+
+build-and-run: clean build-macos-arm64 
+	./$(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64

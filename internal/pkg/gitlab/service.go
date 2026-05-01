@@ -8,20 +8,17 @@ import (
 	"strings"
 
 	"review-info/internal/config"
+	"review-info/internal/domain"
 	"review-info/internal/pkg/gitlab/models"
 )
 
 type Service struct {
-	client  client
+	client  domain.HTTPClient
 	baseURL string
 	token   string
 }
 
-type client interface {
-	Do(req *http.Request) (*http.Response, error)
-}
-
-func New(client client, config config.Gitlab) *Service {
+func New(client domain.HTTPClient, config config.Gitlab) *Service {
 	return &Service{
 		client:  client,
 		baseURL: config.BaseURL,

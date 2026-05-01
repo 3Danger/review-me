@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"review-info/internal/domain"
 	"review-info/internal/preferences"
-	"review-info/internal/service/manager"
 )
 
 func TestNew(t *testing.T) {
@@ -30,39 +30,44 @@ func TestNew(t *testing.T) {
 		t.Error("theme was not initialized")
 	}
 
+	// Verify controller was created
+	if app.ctrl == nil {
+		t.Fatal("ctrl was not initialized")
+	}
+
 	// Verify preferences were set
-	if app.prefs != prefs {
+	if app.ctrl.prefs != prefs {
 		t.Error("preferences were not set correctly")
 	}
 
 	// Verify state was initialized from preferences
-	if app.team != prefs.Team {
-		t.Errorf("team not initialized from preferences: got %q, want %q", app.team, prefs.Team)
+	if app.ctrl.team != prefs.Team {
+		t.Errorf("team not initialized from preferences: got %q, want %q", app.ctrl.team, prefs.Team)
 	}
 
-	if app.action != prefs.Action {
-		t.Errorf("action not initialized from preferences: got %q, want %q", app.action, prefs.Action)
+	if app.ctrl.action != prefs.Action {
+		t.Errorf("action not initialized from preferences: got %q, want %q", app.ctrl.action, prefs.Action)
 	}
 
-	if app.timezone != prefs.Timezone {
-		t.Errorf("timezone not initialized from preferences: got %q, want %q", app.timezone, prefs.Timezone)
+	if app.ctrl.timezone != prefs.Timezone {
+		t.Errorf("timezone not initialized from preferences: got %q, want %q", app.ctrl.timezone, prefs.Timezone)
 	}
 
 	// Verify initial state
-	if app.mrURL != "" {
-		t.Errorf("mrURL should be empty initially, got %q", app.mrURL)
+	if app.ctrl.mrURL != "" {
+		t.Errorf("mrURL should be empty initially, got %q", app.ctrl.mrURL)
 	}
 
-	if app.result != "" {
-		t.Errorf("result should be empty initially, got %q", app.result)
+	if app.ctrl.result != "" {
+		t.Errorf("result should be empty initially, got %q", app.ctrl.result)
 	}
 
-	if app.loading {
+	if app.ctrl.loading {
 		t.Error("loading should be false initially")
 	}
 
-	if app.error != "" {
-		t.Errorf("error should be empty initially, got %q", app.error)
+	if app.ctrl.error != "" {
+		t.Errorf("error should be empty initially, got %q", app.ctrl.error)
 	}
 }
 
@@ -74,24 +79,24 @@ func TestAppStructure(t *testing.T) {
 		Team:     "@test-team",
 	}
 
-	var svc *manager.Service // nil is fine for structure test
+	var svc domain.ActionRunner // nil is fine for structure test
 
 	app := New(svc, prefs)
 
 	// Test that all fields are accessible (compilation test)
 	_ = app.window
 	_ = app.theme
-	_ = app.prefs
-	_ = app.service
-	_ = app.mrURL
-	_ = app.team
-	_ = app.action
-	_ = app.timezone
-	_ = app.result
-	_ = app.loading
-	_ = app.error
-	_ = app.clipboardError
-	_ = app.mrURLError
+	_ = app.ctrl
+	_ = app.ctrl.service
+	_ = app.ctrl.mrURL
+	_ = app.ctrl.team
+	_ = app.ctrl.action
+	_ = app.ctrl.timezone
+	_ = app.ctrl.result
+	_ = app.ctrl.loading
+	_ = app.ctrl.error
+	_ = app.ctrl.clipboardError
+	_ = app.ctrl.mrURLError
 }
 
 func TestIsValidMRURL(t *testing.T) {

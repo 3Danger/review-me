@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"review-info/internal/config"
-	"review-info/internal/pkg/shower"
+	"review-info/internal/domain"
 )
 
 const (
@@ -13,18 +13,35 @@ const (
 )
 
 type Service struct {
-	svc *shower.Service
-	cnf config.Message
+	svc      domain.MRProcessor
+	cnf      config.Message
+	registry *ActionRegistry
 }
 
-func New(cnf config.Message, svc *shower.Service) *Service {
-	return &Service{
-		cnf: cnf,
-		svc: svc,
+func New(cnf config.Message, svc domain.MRProcessor) *Service {
+	s := &Service{
+		cnf:      cnf,
+		svc:      svc,
+		registry: NewActionRegistry(),
 	}
+	s.registry.Register("review", s.reviewHandler)
+	s.registry.Register("deploy", s.deployHandler)
+	return s
 }
 
-func (s *Service) ReviewMe(rawGitlabURL string) (string, error) {
+func (s *Service) Execute(action string, url string, opts domain.ActionOptions) (string, error) {
+	return s.registry.Execute(action, url, opts)
+}
+
+func (s *Service) reviewHandler(url string, _ domain.ActionOptions) (string, error) {
+	return s.reviewMe(url)
+}
+
+func (s *Service) deployHandler(url string, opts domain.ActionOptions) (string, error) {
+	return s.deployPlaningWithTimezone(url, opts.After, opts.Timezone, opts.MigrationsApplied)
+}
+
+func (s *Service) reviewMe(rawGitlabURL string) (string, error) {
 	info, err := s.svc.Process(rawGitlabURL)
 	if err != nil {
 		return "", err
@@ -38,25 +55,7 @@ func (s *Service) ReviewMe(rawGitlabURL string) (string, error) {
 	return msg, nil
 }
 
-func (s *Service) DeployPlaning(rawGitlabURL string, after time.Duration, migrationsApplied bool) (string, error) {
-	info, err := s.svc.Process(rawGitlabURL)
-	if err != nil {
-		return "", err
-	}
-
-	now := time.Now().In(config.LocationMSK()).Add(timeRoundStep).Truncate(timeRoundStep).Add(after)
-
-	msg := s.cnf.Team +
-		"\n" + s.cnf.Deploy + ": с " + now.Format("15:04") +
-		" по " + now.Add(deployWindow).Format("15:04") +
-		"\nСервис: " + info.ServiceName +
-		"\n" + info.Short() +
-		"\n" + migrationLine(info.HasMigrations, migrationsApplied)
-
-	return msg, nil
-}
-
-func (s *Service) DeployPlaningWithTimezone(rawGitlabURL string, after time.Duration, timezone string, migrationsApplied bool) (string, error) {
+func (s *Service) deployPlaningWithTimezone(rawGitlabURL string, after time.Duration, timezone string, migrationsApplied bool) (string, error) {
 	info, err := s.svc.Process(rawGitlabURL)
 	if err != nil {
 		return "", err
