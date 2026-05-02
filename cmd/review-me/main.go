@@ -91,7 +91,7 @@ func runGUI() error {
 
 	// Create HTTP client and services
 	slog.Info("Creating services...")
-	client := new(http.Client)
+	client := &http.Client{Timeout: 30 * time.Second}
 	svc := manager.New(
 		cnf.Message,
 		shower.New(
@@ -133,7 +133,7 @@ func runCLI() error {
 	}
 
 	var (
-		client = new(http.Client)
+		client = &http.Client{Timeout: 30 * time.Second}
 		mrURL  = flag.String("mr", "", "URL of the merge request")
 		team   = flag.String("team", "", "Team to notify (e.g., @team-name)")
 		action = flag.String("action", "review", "what to do (deploy or review)")

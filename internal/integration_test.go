@@ -34,7 +34,7 @@ func TestEndToEndCLI(t *testing.T) {
 	}
 
 	// Create services
-	client := new(http.Client)
+	client := &http.Client{Timeout: 30 * time.Second}
 	svc := manager.New(
 		cnf.Message,
 		shower.New(
@@ -126,7 +126,7 @@ func TestGUIInitialization(t *testing.T) {
 	}
 
 	// Create services
-	client := new(http.Client)
+	client := &http.Client{Timeout: 30 * time.Second}
 	svc := manager.New(
 		cnf.Message,
 		shower.New(
