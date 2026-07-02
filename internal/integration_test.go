@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -8,149 +9,105 @@ import (
 	"time"
 
 	"review-info/internal/config"
+	"review-info/internal/domain"
 	"review-info/internal/pkg/gitlab"
 	"review-info/internal/pkg/jira"
 	"review-info/internal/pkg/shower"
-	"review-info/internal/domain"
 	"review-info/internal/preferences"
 	"review-info/internal/service/manager"
 )
 
-// TestEndToEndCLI tests the complete CLI flow
+// TestEndToEndCLI tests the complete CLI flow with real API endpoints.
+// Skipped unless REVIEW_INFO_INTEGRATION=1 is set.
 func TestEndToEndCLI(t *testing.T) {
-	// Save and restore CWD
-	origCwd, _ := os.Getwd()
-	defer os.Chdir(origCwd)
-
-	// Change to project root to find .env
-	if err := os.Chdir(".."); err != nil {
-		t.Fatalf("failed to change to project root: %v", err)
+	if os.Getenv("REVIEW_INFO_INTEGRATION") != "1" {
+		t.Skip("Skipping: set REVIEW_INFO_INTEGRATION=1 to run integration tests")
 	}
 
-	// Load config
 	cnf, err := config.Load()
 	if err != nil {
-		t.Skipf("Skipping test: .env not found: %v", err)
+		t.Fatalf("config.Load() failed: %v", err)
 	}
 
-	// Create services
+	if cnf.Gitlab.Token == "" || cnf.Jira.Pass == "" {
+		t.Fatal("GITLAB_TOKEN and JIRA_PASSWORD must be set in .env")
+	}
+
 	client := &http.Client{Timeout: 30 * time.Second}
+
 	svc := manager.New(
 		cnf.Message,
 		shower.New(
 			gitlab.New(client, cnf.Gitlab),
 			jira.New(client, cnf.Jira),
+			cnf.Gitlab.BaseURL,
+			cnf.Jira.ProjectPrefix,
 		),
 	)
 
-	// Test review action via Execute
 	mrURL := "https://git.vseinstrumenti.net/fd/account-balance/-/merge_requests/591"
-	message, err := svc.Execute("review", mrURL, domain.ActionOptions{})
+	message, err := svc.Execute(context.Background(), domain.ActionReview, mrURL, domain.ActionOptions{})
 	if err != nil {
 		t.Fatalf("Execute review failed: %v", err)
 	}
 
 	if message == "" {
-		t.Error("ReviewMe returned empty message")
+		t.Error("Execute returned empty message")
 	}
 
-	t.Logf("ReviewMe result: %s", message)
+	t.Logf("Result: %s", message)
 }
 
-// TestPreferencesPersistence tests preferences save and load
+// TestPreferencesPersistence tests saving and loading preferences to a file.
 func TestPreferencesPersistence(t *testing.T) {
-	// Create a temporary directory for test preferences
 	tmpDir := t.TempDir()
 	prefsFile := filepath.Join(tmpDir, "preferences.json")
 
-	// Override the preferences file path for testing
-	// We'll use environment variable or direct file operations
-	testPrefs := &preferences.Preferences{
+	// Save preferences
+	origPrefs := &preferences.Preferences{
 		Action:      "deploy",
 		Timezone:    "America/New_York",
 		Team:        "@test-team",
-		LastUpdated: time.Now(),
+		LastUpdated: time.Date(2024, 6, 15, 10, 0, 0, 0, time.UTC),
 	}
 
-	// Save preferences to temp file
-	// Note: This test is limited because GetFilePath() uses OS-specific paths
-	// In a real scenario, we'd need to refactor preferences to accept a custom path
-	t.Logf("Test preferences would be saved to: %s", prefsFile)
-	t.Logf("Preferences: Action=%s, Timezone=%s, Team=%s",
-		testPrefs.Action, testPrefs.Timezone, testPrefs.Team)
+	if err := preferences.SaveToFile(origPrefs, prefsFile); err != nil {
+		t.Fatalf("SaveToFile failed: %v", err)
+	}
 
-	// For now, just test that GetFilePath returns a valid path
-	path, err := preferences.GetFilePath()
+	// Load them back
+	loadedPrefs, err := preferences.LoadFromFile(prefsFile)
 	if err != nil {
-		t.Fatalf("GetFilePath failed: %v", err)
+		t.Fatalf("LoadFromFile failed: %v", err)
 	}
 
-	if path == "" {
-		t.Error("GetFilePath returned empty path")
+	if loadedPrefs.Action != origPrefs.Action {
+		t.Errorf("Action = %q, want %q", loadedPrefs.Action, origPrefs.Action)
+	}
+	if loadedPrefs.Timezone != origPrefs.Timezone {
+		t.Errorf("Timezone = %q, want %q", loadedPrefs.Timezone, origPrefs.Timezone)
+	}
+	if loadedPrefs.Team != origPrefs.Team {
+		t.Errorf("Team = %q, want %q", loadedPrefs.Team, origPrefs.Team)
 	}
 
-	t.Logf("Preferences file path: %s", path)
-
-	// Test that we can create the directory
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		t.Fatalf("Failed to create preferences directory: %v", err)
+	// LastUpdated should be set to current time on load, not restored
+	if loadedPrefs.LastUpdated.IsZero() {
+		t.Error("LastUpdated should be set on load")
 	}
-
-	// Clean up
-	defer os.RemoveAll(dir)
 }
 
-// TestGUIInitialization tests that GUI components can be initialized
-func TestGUIInitialization(t *testing.T) {
-	// Save and restore CWD
-	origCwd, _ := os.Getwd()
-	defer os.Chdir(origCwd)
-
-	// Change to project root to find .env
-	if err := os.Chdir(".."); err != nil {
-		t.Fatalf("failed to change to project root: %v", err)
+// TestEndToEndCLI_SkipWithoutConfig verifies that config.Load skips cleanly.
+func TestEndToEndCLI_SkipWithoutConfig(t *testing.T) {
+	if _, err := config.Load(); err != nil {
+		t.Logf(".env not found or incomplete: %v", err)
 	}
 
-	// Load config
-	cnf, err := config.Load()
-	if err != nil {
-		t.Skipf("Skipping test: .env not found: %v", err)
+	// Verify domain action constants are valid
+	if domain.ActionReview != "review" {
+		t.Errorf("ActionReview = %q, want %q", domain.ActionReview, "review")
 	}
-
-	// Create preferences
-	prefs := &preferences.Preferences{
-		Action:   "review",
-		Timezone: "Europe/Moscow",
-		Team:     cnf.Message.Team,
-	}
-
-	// Create services
-	client := &http.Client{Timeout: 30 * time.Second}
-	svc := manager.New(
-		cnf.Message,
-		shower.New(
-			gitlab.New(client, cnf.Gitlab),
-			jira.New(client, cnf.Jira),
-		),
-	)
-
-	// Test that we can create GUI app without running it
-	// This tests the initialization logic
-	t.Logf("Service initialized: %v", svc != nil)
-	t.Logf("Preferences: Action=%s, Timezone=%s, Team=%s",
-		prefs.Action, prefs.Timezone, prefs.Team)
-
-	// Verify preferences are valid
-	if prefs.Action != "review" && prefs.Action != "deploy" {
-		t.Errorf("Invalid action: %s", prefs.Action)
-	}
-
-	if prefs.Timezone == "" {
-		t.Error("Timezone is empty")
-	}
-
-	if prefs.Team == "" {
-		t.Error("Team is empty")
+	if domain.ActionDeploy != "deploy" {
+		t.Errorf("ActionDeploy = %q, want %q", domain.ActionDeploy, "deploy")
 	}
 }

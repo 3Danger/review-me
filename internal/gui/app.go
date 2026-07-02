@@ -96,7 +96,7 @@ func (a *App) layout(gtx layout.Context) layout.Dimensions {
 					return a.layoutInputSection(gtx)
 				}),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					if a.ctrl.result != "" {
+					if a.ctrl.execution.Result() != "" {
 						return a.layoutResultSection(gtx)
 					}
 					return layout.Dimensions{}
@@ -128,21 +128,11 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 				}),
 				// MR URL validation error (if any)
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					if a.ctrl.mrURLError != "" {
-						return layout.Inset{Bottom: SmallPadding, Left: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-							return CreateLabel(gtx, a.theme, a.ctrl.mrURLError, SmallSize)
-						})
-					}
-					return layout.Dimensions{}
+					return a.renderError(gtx, a.ctrl.mrURLError)
 				}),
 				// Clipboard error message (if any)
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					if a.ctrl.clipboardError != "" {
-						return layout.Inset{Bottom: SmallPadding, Left: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-							return CreateLabel(gtx, a.theme, a.ctrl.clipboardError, SmallSize)
-						})
-					}
-					return layout.Dimensions{}
+					return a.renderError(gtx, a.ctrl.clipboardError)
 				}),
 			)
 		}),
@@ -197,7 +187,7 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 
 		// Timezone dropdown (only shown when Deploy is selected)
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			if a.ctrl.action == "deploy" {
+			if a.ctrl.form.Action == "deploy" {
 				return layout.Inset{Top: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 					return layout.Flex{
 						Axis: layout.Vertical,
@@ -224,7 +214,7 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 
 		// Migrations checkbox (only shown when Deploy is selected)
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			if a.ctrl.action == "deploy" {
+			if a.ctrl.form.Action == "deploy" {
 				return layout.Inset{
 					Bottom: SmallPadding,
 					Left:   StandardPadding,
@@ -239,7 +229,7 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 
 		// Loading indicator
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			if a.ctrl.loading {
+			if a.ctrl.execution.IsLoading() {
 				return layout.Inset{Top: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 					return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 						return CreateLabel(gtx, a.theme, "Загрузка данных, пожалуйста подождите...", unit.Sp(13))
@@ -251,25 +241,7 @@ func (a *App) layoutInputSection(gtx layout.Context) layout.Dimensions {
 
 		// General error message (network/API errors)
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			if a.ctrl.error != "" {
-				return layout.Inset{Top: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-					return layout.Flex{
-						Axis: layout.Vertical,
-					}.Layout(gtx,
-						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							return layout.Inset{
-								Top:    StandardPadding,
-								Bottom: StandardPadding,
-								Left:   StandardPadding,
-								Right:  StandardPadding,
-							}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-								return CreateLabel(gtx, a.theme, "Ошибка: "+a.ctrl.error, BodySize)
-							})
-						}),
-					)
-				})
-			}
-			return layout.Dimensions{}
+			return a.renderError(gtx, a.ctrl.execution.Error())
 		}),
 	)
 }
@@ -290,7 +262,7 @@ func (a *App) layoutResultSection(gtx layout.Context) layout.Dimensions {
 				})
 			}),
 			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				a.ctrl.resultOutput.SetText(a.ctrl.result)
+				a.ctrl.resultOutput.SetText(a.ctrl.execution.Result())
 
 				return layout.Inset{
 					Left:   StandardPadding,
@@ -301,5 +273,15 @@ func (a *App) layoutResultSection(gtx layout.Context) layout.Dimensions {
 				})
 			}),
 		)
+	})
+}
+
+// renderError renders an error message or nothing if err is empty.
+func (a *App) renderError(gtx layout.Context, err string) layout.Dimensions {
+	if err == "" {
+		return layout.Dimensions{}
+	}
+	return layout.Inset{Bottom: SmallPadding, Left: SmallPadding}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return CreateLabel(gtx, a.theme, err, SmallSize)
 	})
 }

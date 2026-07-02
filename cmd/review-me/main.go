@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -36,30 +38,17 @@ func main() {
 // shouldRunGUI determines if the application should run in GUI mode
 // Returns true if no CLI flags are present or if -gui flag is set
 func shouldRunGUI() bool {
-	// Check if -cli flag is explicitly set (force CLI mode)
-	for _, arg := range os.Args[1:] {
-		if arg == "-cli" {
-			return false
-		}
-	}
-
-	// Check if -gui flag is explicitly set
-	for _, arg := range os.Args[1:] {
-		if arg == "-gui" {
-			return true
-		}
-	}
-
-	// Check if any CLI flags are present
 	hasCliFlags := false
 	for _, arg := range os.Args[1:] {
-		if arg == "-mr" || arg == "-team" || arg == "-action" {
+		switch arg {
+		case "-cli":
+			return false
+		case "-gui":
+			return true
+		case "-mr", "-team", "-action":
 			hasCliFlags = true
-			break
 		}
 	}
-
-	// If no CLI flags present, run GUI mode
 	return !hasCliFlags
 }
 
@@ -92,11 +81,14 @@ func runGUI() error {
 	// Create HTTP client and services
 	slog.Info("Creating services...")
 	client := &http.Client{Timeout: 30 * time.Second}
+	gitlabHost := extractHost(cnf.Gitlab.BaseURL)
 	svc := manager.New(
 		cnf.Message,
 		shower.New(
 			gitlab.New(client, cnf.Gitlab),
 			jira.New(client, cnf.Jira),
+			gitlabHost,
+			cnf.Jira.ProjectPrefix,
 		),
 	)
 	slog.Info("Services created successfully")
@@ -146,15 +138,18 @@ func runCLI() error {
 		cnf.Message.Team = *team
 	}
 
+	gitlabHost := extractHost(cnf.Gitlab.BaseURL)
 	svc := manager.New(
 		cnf.Message,
 		shower.New(
 			gitlab.New(client, cnf.Gitlab),
 			jira.New(client, cnf.Jira),
+			gitlabHost,
+			cnf.Jira.ProjectPrefix,
 		),
 	)
 
-	message, err := svc.Execute(*action, *mrURL, domain.ActionOptions{
+	message, err := svc.Execute(context.Background(), domain.ActionType(*action), *mrURL, domain.ActionOptions{
 		After:    time.Minute * 30,
 		Timezone: "Europe/Moscow",
 	})
@@ -167,4 +162,14 @@ func runCLI() error {
 	fmt.Println(message)
 
 	return nil
+}
+
+// extractHost extracts the hostname from a base URL string.
+// e.g. "https://git.vseinstrumenti.net" -> "git.vseinstrumenti.net"
+func extractHost(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	return parsed.Host
 }

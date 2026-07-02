@@ -62,18 +62,26 @@ func (i *InputWithPaste) SetText(text string) {
 
 // OutputWithCopy is a text display component with copy button and feedback
 type OutputWithCopy struct {
-	text         string
-	CopyBtn      widget.Clickable
-	copied       bool
-	copiedAt     time.Time
-	feedbackDone bool
-	copyError    string
-	errorAt      time.Time
+	text      string
+	CopyBtn   widget.Clickable
+	copied    bool
+	copyError string
+
+	editor   widget.Editor
+	prevText string
+
+	copyTimer  *time.Timer
+	errorTimer *time.Timer
 }
 
 // NewOutputWithCopy creates a new OutputWithCopy component
 func NewOutputWithCopy() *OutputWithCopy {
-	return &OutputWithCopy{}
+	return &OutputWithCopy{
+		editor: widget.Editor{
+			SingleLine: false,
+			ReadOnly:   true,
+		},
+	}
 }
 
 // SetText sets the text to display
@@ -92,40 +100,41 @@ func (o *OutputWithCopy) Layout(gtx layout.Context, th *material.Theme, w *app.W
 	if o.CopyBtn.Clicked(gtx) {
 		// Clear previous error
 		o.copyError = ""
+		if o.errorTimer != nil {
+			o.errorTimer.Stop()
+		}
 
 		if o.text == "" {
 			o.copyError = "Ошибка: нет текста для копирования"
-			o.errorAt = time.Now()
+			o.errorTimer = time.AfterFunc(3*time.Second, func() {
+				o.copyError = ""
+				w.Invalidate()
+			})
 		} else {
 			err := writeClipboard(gtx, o.text)
 			if err == nil {
 				o.copied = true
-				o.copiedAt = time.Now()
-				o.feedbackDone = false
+				if o.copyTimer != nil {
+					o.copyTimer.Stop()
+				}
+				o.copyTimer = time.AfterFunc(2*time.Second, func() {
+					o.copied = false
+					w.Invalidate()
+				})
 			} else {
 				o.copyError = "Ошибка: не удалось скопировать в буфер обмена"
-				o.errorAt = time.Now()
+				o.errorTimer = time.AfterFunc(3*time.Second, func() {
+					o.copyError = ""
+					w.Invalidate()
+				})
 			}
 		}
 	}
 
-	// Check if feedback period has expired (2 seconds)
-	if o.copied && !o.feedbackDone {
-		if time.Since(o.copiedAt) > 2*time.Second {
-			o.copied = false
-			o.feedbackDone = true
-		} else {
-			// Request another frame to update the UI
-			w.Invalidate()
-		}
-	}
-
-	// Check if error display period has expired (3 seconds)
-	if o.copyError != "" && time.Since(o.errorAt) > 3*time.Second {
-		o.copyError = ""
-	} else if o.copyError != "" {
-		// Request another frame to update the UI
-		w.Invalidate()
+	// Update editor text only if it has changed
+	if o.text != o.prevText {
+		o.editor.SetText(o.text)
+		o.prevText = o.text
 	}
 
 	return layout.Flex{
@@ -137,13 +146,6 @@ func (o *OutputWithCopy) Layout(gtx layout.Context, th *material.Theme, w *app.W
 				Top:    SmallPadding,
 				Bottom: SmallPadding,
 			}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				// Create a read-only editor for displaying text
-				editor := widget.Editor{
-					SingleLine: false,
-					ReadOnly:   true,
-				}
-				editor.SetText(o.text)
-
 				// Set a reasonable height for the text area
 				gtx.Constraints.Min.Y = gtx.Dp(unit.Dp(100))
 				gtx.Constraints.Max.Y = gtx.Dp(unit.Dp(150))
@@ -161,7 +163,7 @@ func (o *OutputWithCopy) Layout(gtx layout.Context, th *material.Theme, w *app.W
 						Left:   StandardPadding,
 						Right:  StandardPadding,
 					}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-						ed := material.Editor(th, &editor, "")
+						ed := material.Editor(th, &o.editor, "")
 						ed.TextSize = BodySize
 						return ed.Layout(gtx)
 					})

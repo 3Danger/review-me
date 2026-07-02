@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"time"
 )
 
@@ -78,42 +77,44 @@ func (p *Preferences) Save() error {
 
 // GetFilePath returns the OS-specific path for the preferences file
 func GetFilePath() (string, error) {
-	var configDir string
-
-	switch runtime.GOOS {
-	case "windows":
-		// Windows: %APPDATA%\review-info\preferences.json
-		appData := os.Getenv("APPDATA")
-		if appData == "" {
-			return "", fmt.Errorf("APPDATA environment variable not set")
-		}
-		configDir = filepath.Join(appData, "review-info")
-
-	case "darwin":
-		// macOS: ~/Library/Application Support/review-info/preferences.json
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("getting user home directory: %w", err)
-		}
-		configDir = filepath.Join(home, "Library", "Application Support", "review-info")
-
-	case "linux":
-		// Linux: ~/.config/review-info/preferences.json
-		configDir = os.Getenv("XDG_CONFIG_HOME")
-		if configDir == "" {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return "", fmt.Errorf("getting user home directory: %w", err)
-			}
-			configDir = filepath.Join(home, ".config")
-		}
-		configDir = filepath.Join(configDir, "review-info")
-
-	default:
-		return "", fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("getting user config dir: %w", err)
 	}
+	return filepath.Join(dir, "review-info", "preferences.json"), nil
+}
 
-	return filepath.Join(configDir, "preferences.json"), nil
+// SaveToFile writes preferences to the specified file path.
+// Exported for testing.
+func SaveToFile(p *Preferences, filePath string) error {
+	dir := filepath.Dir(filePath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("creating directory: %w", err)
+	}
+	p.LastUpdated = time.Now()
+	data, err := json.MarshalIndent(p, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling preferences: %w", err)
+	}
+	if err := os.WriteFile(filePath, data, 0600); err != nil {
+		return fmt.Errorf("writing preferences file: %w", err)
+	}
+	return nil
+}
+
+// LoadFromFile reads preferences from the specified file path.
+// Exported for testing.
+func LoadFromFile(filePath string) (*Preferences, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("reading preferences file: %w", err)
+	}
+	var prefs Preferences
+	if err := json.Unmarshal(data, &prefs); err != nil {
+		return nil, fmt.Errorf("parsing preferences: %w", err)
+	}
+	prefs.LastUpdated = time.Now()
+	return &prefs, nil
 }
 
 // getDefaults returns default preferences

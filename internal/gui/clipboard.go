@@ -54,7 +54,7 @@ func writeClipboard(gtx layout.Context, text string) error {
 	// Perform clipboard write operation with application/text MIME type
 	// (matching the pattern used in Gio's Editor widget)
 	gtx.Execute(clipboard.WriteCmd{
-		Type: "application/text",
+		Type: "text/plain",
 		Data: reader,
 	})
 

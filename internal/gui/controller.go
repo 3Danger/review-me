@@ -1,6 +1,8 @@
 package gui
 
 import (
+	"context"
+	"log/slog"
 	"strings"
 
 	"gioui.org/app"
@@ -14,6 +16,7 @@ import (
 
 // Controller handles all business logic and mutable state for the GUI.
 type Controller struct {
+	// Dependencies
 	service domain.ActionRunner
 	prefs   *preferences.Preferences
 	window  *app.Window
@@ -27,29 +30,22 @@ type Controller struct {
 	resultOutput       *OutputWithCopy
 
 	// State
-	mrURL              string
-	team               string
-	action             string
-	timezone           string
-	migrationsApplied  bool
-	result             string
-	loading            bool
-	error              string
-	clipboardError     string
-	mrURLError         string
+	form        FormState
+	execution   ExecutionState
+	autoTrigger AutoTrigger
 
-	// Tracking for auto-trigger
-	lastAction            string
-	lastTimezone          string
-	lastMigrationsApplied bool
+	// Error fields (UI display only)
+	clipboardError string
+	mrURLError     string
 }
+
+// TimezoneOptions is the list of timezones shown in the GUI dropdown.
+// Can be overridden at package level or via config.
+var TimezoneOptions = []string{"Europe/Moscow", "Europe/Berlin"}
 
 // NewController creates a new Controller with initial state from preferences.
 func NewController(service domain.ActionRunner, prefs *preferences.Preferences) *Controller {
-	timezones := []string{
-		"Europe/Moscow",
-		"Europe/Berlin",
-	}
+	timezones := TimezoneOptions
 
 	timezoneIndex := 0
 	for i, tz := range timezones {
@@ -67,7 +63,7 @@ func NewController(service domain.ActionRunner, prefs *preferences.Preferences) 
 
 	actionEnum := widget.Enum{Value: prefs.Action}
 
-	return &Controller{
+	ctrl := &Controller{
 		service: service,
 		prefs:   prefs,
 
@@ -77,15 +73,15 @@ func NewController(service domain.ActionRunner, prefs *preferences.Preferences) 
 		timezoneDropdown:   NewDropdown(timezones, timezoneIndex),
 		resultOutput:       NewOutputWithCopy(),
 		migrationsCheckbox: widget.Bool{},
-
-		team:     prefs.Team,
-		action:   prefs.Action,
-		timezone: prefs.Timezone,
-
-		lastAction:            prefs.Action,
-		lastTimezone:          prefs.Timezone,
-		lastMigrationsApplied: false,
 	}
+
+	ctrl.form.Action = prefs.Action
+	ctrl.form.Timezone = prefs.Timezone
+	ctrl.form.Team = prefs.Team
+
+	ctrl.autoTrigger.Record(prefs.Action, prefs.Timezone, false)
+
+	return ctrl
 }
 
 // HandleEvents processes UI events and business logic.
@@ -107,7 +103,7 @@ func (c *Controller) HandleEvents(gtx layout.Context) {
 					c.clipboardError = "Ошибка: буфер обмена пуст"
 				} else {
 					c.mrURLInput.SetText(trimmedText)
-					c.mrURL = trimmedText
+					c.form.MRURL = trimmedText
 					c.mrURLError = ""
 					triggerGenerate = true
 				}
@@ -123,41 +119,31 @@ func (c *Controller) HandleEvents(gtx layout.Context) {
 	newMigrations := c.migrationsCheckbox.Value
 
 	// Detect changes that should trigger generation
-	if newAction != c.lastAction {
+	if c.autoTrigger.HasChanges(newAction, newTimezone, newMigrations) {
 		triggerGenerate = true
 	}
-	if newTimezone != c.lastTimezone {
-		triggerGenerate = true
-	}
-	if newMigrations != c.lastMigrationsApplied {
-		triggerGenerate = true
-	}
-
-	// Save for next frame comparison
-	c.lastAction = newAction
-	c.lastTimezone = newTimezone
-	c.lastMigrationsApplied = newMigrations
+	c.autoTrigger.Record(newAction, newTimezone, newMigrations)
 
 	// Update current state
-	c.action = newAction
-	c.timezone = newTimezone
-	c.migrationsApplied = newMigrations
+	c.form.Action = newAction
+	c.form.Timezone = newTimezone
+	c.form.MigrationsApplied = newMigrations
 
-	oldMRURL := c.mrURL
-	c.mrURL = c.mrURLInput.Text()
-	c.team = c.teamEditor.Text()
+	oldMRURL := c.form.MRURL
+	c.form.MRURL = c.mrURLInput.Text()
+	c.form.Team = c.teamEditor.Text()
 
 	// Clear errors if user manually edits the MR URL field
-	if oldMRURL != c.mrURL {
+	if oldMRURL != c.form.MRURL {
 		c.clipboardError = ""
 		c.mrURLError = ""
-		if strings.Contains(c.error, "MR URL") || strings.Contains(c.error, "URL") {
-			c.error = ""
+		if strings.Contains(c.execution.Error(), "MR URL") || strings.Contains(c.execution.Error(), "URL") {
+			c.execution.SetError("")
 		}
 	}
 
 	// Auto-trigger generation
-	if triggerGenerate && !c.loading && strings.TrimSpace(c.mrURL) != "" {
+	if triggerGenerate && !c.execution.IsLoading() && strings.TrimSpace(c.form.MRURL) != "" {
 		c.clipboardError = ""
 		c.handleGenerate()
 	}
@@ -165,43 +151,50 @@ func (c *Controller) HandleEvents(gtx layout.Context) {
 
 // handleGenerate processes the generate button click and calls the appropriate service method
 func (c *Controller) handleGenerate() {
-	c.error = ""
+	if !c.execution.TryAcquire() {
+		return
+	}
+	c.execution.SetError("")
+
 	c.mrURLError = ""
 
 	// Validate MR URL is not empty
-	if err := ValidateNonEmpty(c.mrURL, "MR URL"); err != nil {
+	if err := ValidateNonEmpty(c.form.MRURL, "MR URL"); err != nil {
 		c.mrURLError = err.Error()
+		c.execution.Release()
 		return
 	}
 
 	// Validate MR URL format
-	if err := ValidateMRURL(c.mrURL); err != nil {
+	if err := ValidateMRURL(c.form.MRURL); err != nil {
 		c.mrURLError = err.Error()
+		c.execution.Release()
 		return
 	}
 
-	mrURL := strings.TrimSpace(c.mrURL)
+	mrURL := strings.TrimSpace(c.form.MRURL)
 
 	// Set loading state and shrink window to base height
-	c.loading = true
-	c.result = ""
+	c.execution.SetLoading(true)
+	c.execution.SetResult("")
 	c.window.Option(app.Size(windowWidth, windowHeight))
 
 	// Process in a goroutine to avoid blocking the UI
 	go func() {
-		result, err := c.service.Execute(c.action, mrURL, domain.ActionOptions{
-			Timezone:          c.timezone,
-			MigrationsApplied: c.migrationsApplied,
+		result, err := c.service.Execute(context.Background(), domain.ActionType(c.form.Action), mrURL, domain.ActionOptions{
+			Timezone:          c.form.Timezone,
+			MigrationsApplied: c.form.MigrationsApplied,
 		})
 
-		c.loading = false
+		c.execution.Release()
+		c.execution.SetLoading(false)
 		if err != nil {
-			c.error = FormatErrorMessage(err)
-			c.result = ""
+			c.execution.SetError(FormatErrorMessage(err))
+			c.execution.SetResult("")
 			c.window.Option(app.Size(windowWidth, windowHeight))
 		} else {
-			c.result = result
-			c.error = ""
+			c.execution.SetResult(result)
+			c.execution.SetError("")
 			c.window.Option(app.Size(windowWidth, resultHeight))
 			c.savePreferences()
 		}
@@ -212,11 +205,11 @@ func (c *Controller) handleGenerate() {
 
 // savePreferences saves the current preferences to disk.
 func (c *Controller) savePreferences() {
-	c.prefs.Action = c.action
-	c.prefs.Timezone = c.timezone
-	c.prefs.Team = c.team
+	c.prefs.Action = c.form.Action
+	c.prefs.Timezone = c.form.Timezone
+	c.prefs.Team = c.form.Team
 
 	if err := c.prefs.Save(); err != nil {
-		_ = err
+		slog.Error("saving preferences", "component", "gui", "operation", "save_preferences", "error", err)
 	}
 }

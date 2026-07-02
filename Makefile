@@ -1,43 +1,51 @@
 # Makefile for review-info cross-platform builds
 
 # Variables
-BINARY_NAME=review-info
-VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-BUILD_DIR=bin
-GO=go
-LDFLAGS=-ldflags="-s -w"
+BINARY_NAME := review-info
+VERSION     := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+BUILD_DIR   := bin
+GO          := go
+LDFLAGS     := -ldflags="-s -w"
 
-# Build targets
-.PHONY: all build-all build-windows build-macos-amd64 build-macos-arm64 build-linux clean
+# Targets
+.PHONY: all build-all clean build-and-run test vet lint tidy
 
 all: build-all
 
-build-all: build-windows build-macos-amd64 build-macos-arm64 build-linux
+# Build for all platforms using a single loop
+build-all: $(BUILD_DIR)
+	@echo "Building version: $(VERSION)"
+	@for plat in darwin/amd64/darwin-amd64 darwin/arm64/darwin-arm64 linux/amd64/linux-amd64 windows/amd64/windows-amd64.exe; do \
+		os=$$(echo $$plat | cut -d/ -f1); \
+		arch=$$(echo $$plat | cut -d/ -f2); \
+		suffix=$$(echo $$plat | cut -d/ -f3); \
+		echo "  $$os/$$arch -> $(BUILD_DIR)/$(BINARY_NAME)-$$suffix"; \
+		GOOS=$$os GOARCH=$$arch $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-$$suffix ./cmd/review-me/; \
+	done
+	@echo "Done."
 
-build-windows:
-	@echo "Building for Windows amd64..."
+$(BUILD_DIR):
 	@mkdir -p $(BUILD_DIR)
-	GOOS=windows GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/review-me/
-
-build-macos-amd64:
-	@echo "Building for macOS amd64..."
-	@mkdir -p $(BUILD_DIR)
-	GOOS=darwin GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/review-me/
-
-build-macos-arm64:
-	@echo "Building for macOS arm64..."
-	@mkdir -p $(BUILD_DIR)
-	GOOS=darwin GOARCH=arm64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/review-me/
-
-build-linux:
-	@echo "Building for Linux amd64..."
-	@mkdir -p $(BUILD_DIR)
-	GOOS=linux GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/review-me/
 
 clean:
 	@echo "Cleaning build directory..."
 	@rm -rf $(BUILD_DIR)
 
+test:
+	@echo "Running tests..."
+	$(GO) test ./... -v
 
-build-and-run: clean build-macos-arm64 
+vet:
+	@echo "Running go vet..."
+	$(GO) vet ./...
+
+lint:
+	@echo "Running golangci-lint..."
+	golangci-lint run ./... || true
+
+tidy:
+	@echo "Running go mod tidy..."
+	$(GO) mod tidy
+
+build-and-run: clean build-all
 	./$(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64

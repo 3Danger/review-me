@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -40,34 +41,34 @@ func TestNew(t *testing.T) {
 		t.Error("preferences were not set correctly")
 	}
 
-	// Verify state was initialized from preferences
-	if app.ctrl.team != prefs.Team {
-		t.Errorf("team not initialized from preferences: got %q, want %q", app.ctrl.team, prefs.Team)
+	// Verify form state was initialized from preferences
+	if app.ctrl.form.Team != prefs.Team {
+		t.Errorf("team not initialized from preferences: got %q, want %q", app.ctrl.form.Team, prefs.Team)
 	}
 
-	if app.ctrl.action != prefs.Action {
-		t.Errorf("action not initialized from preferences: got %q, want %q", app.ctrl.action, prefs.Action)
+	if app.ctrl.form.Action != prefs.Action {
+		t.Errorf("action not initialized from preferences: got %q, want %q", app.ctrl.form.Action, prefs.Action)
 	}
 
-	if app.ctrl.timezone != prefs.Timezone {
-		t.Errorf("timezone not initialized from preferences: got %q, want %q", app.ctrl.timezone, prefs.Timezone)
+	if app.ctrl.form.Timezone != prefs.Timezone {
+		t.Errorf("timezone not initialized from preferences: got %q, want %q", app.ctrl.form.Timezone, prefs.Timezone)
 	}
 
 	// Verify initial state
-	if app.ctrl.mrURL != "" {
-		t.Errorf("mrURL should be empty initially, got %q", app.ctrl.mrURL)
+	if app.ctrl.form.MRURL != "" {
+		t.Errorf("mrURL should be empty initially, got %q", app.ctrl.form.MRURL)
 	}
 
-	if app.ctrl.result != "" {
-		t.Errorf("result should be empty initially, got %q", app.ctrl.result)
+	if app.ctrl.execution.Result() != "" {
+		t.Errorf("result should be empty initially, got %q", app.ctrl.execution.Result())
 	}
 
-	if app.ctrl.loading {
+	if app.ctrl.execution.IsLoading() {
 		t.Error("loading should be false initially")
 	}
 
-	if app.ctrl.error != "" {
-		t.Errorf("error should be empty initially, got %q", app.ctrl.error)
+	if app.ctrl.execution.Error() != "" {
+		t.Errorf("error should be empty initially, got %q", app.ctrl.execution.Error())
 	}
 }
 
@@ -88,13 +89,13 @@ func TestAppStructure(t *testing.T) {
 	_ = app.theme
 	_ = app.ctrl
 	_ = app.ctrl.service
-	_ = app.ctrl.mrURL
-	_ = app.ctrl.team
-	_ = app.ctrl.action
-	_ = app.ctrl.timezone
-	_ = app.ctrl.result
-	_ = app.ctrl.loading
-	_ = app.ctrl.error
+	_ = app.ctrl.form.MRURL
+	_ = app.ctrl.form.Team
+	_ = app.ctrl.form.Action
+	_ = app.ctrl.form.Timezone
+	_ = app.ctrl.execution.Result()
+	_ = app.ctrl.execution.IsLoading()
+	_ = app.ctrl.execution.Error()
 	_ = app.ctrl.clipboardError
 	_ = app.ctrl.mrURLError
 }
@@ -161,73 +162,62 @@ func TestIsValidMRURL(t *testing.T) {
 func TestFormatErrorMessage(t *testing.T) {
 	tests := []struct {
 		name     string
-		errMsg   string
+		err      error
 		expected string
 	}{
 		{
-			name:     "connection refused error",
-			errMsg:   "connection refused",
+			name:     "nil error",
+			err:      nil,
+			expected: "",
+		},
+		{
+			name:     "unauthorized error",
+			err:      fmt.Errorf("%w: status=401", domain.ErrUnauthorized),
+			expected: "Ошибка авторизации: проверьте токены доступа в .env файле.",
+		},
+		{
+			name:     "forbidden error",
+			err:      fmt.Errorf("%w: status=403", domain.ErrForbidden),
+			expected: "Ошибка доступа: недостаточно прав для выполнения операции.",
+		},
+		{
+			name:     "not found error",
+			err:      fmt.Errorf("%w: status=404", domain.ErrNotFound),
+			expected: "Ошибка: ресурс не найден. Проверьте правильность MR URL.",
+		},
+		{
+			name:     "bad request error",
+			err:      fmt.Errorf("%w: status=400", domain.ErrBadRequest),
+			expected: "Ошибка: неверный запрос. Проверьте правильность введенных данных.",
+		},
+		{
+			name:     "server error",
+			err:      fmt.Errorf("%w: status=500", domain.ErrServerError),
+			expected: "Ошибка сервера: внутренняя ошибка сервера. Попробуйте позже.",
+		},
+		{
+			name:     "network error",
+			err:      fmt.Errorf("%w: connection refused", domain.ErrNetwork),
 			expected: "Ошибка сети: не удалось подключиться к серверу. Проверьте подключение к интернету.",
 		},
 		{
 			name:     "timeout error",
-			errMsg:   "request timeout",
+			err:      fmt.Errorf("request timeout"),
 			expected: "Ошибка сети: превышено время ожидания ответа от сервера. Попробуйте еще раз.",
 		},
 		{
-			name:     "no such host error",
-			errMsg:   "no such host",
-			expected: "Ошибка сети: не удалось найти сервер. Проверьте URL.",
-		},
-		{
-			name:     "401 unauthorized",
-			errMsg:   "401 unauthorized",
-			expected: "Ошибка авторизации: проверьте токены доступа в .env файле.",
-		},
-		{
-			name:     "403 forbidden",
-			errMsg:   "403 forbidden",
-			expected: "Ошибка доступа: недостаточно прав для выполнения операции.",
-		},
-		{
-			name:     "404 not found",
-			errMsg:   "404 not found",
-			expected: "Ошибка: ресурс не найден. Проверьте правильность MR URL.",
-		},
-		{
-			name:     "500 internal server error",
-			errMsg:   "500 internal server error",
-			expected: "Ошибка сервера: внутренняя ошибка сервера. Попробуйте позже.",
-		},
-		{
-			name:     "bad request",
-			errMsg:   "bad request",
-			expected: "Ошибка: неверный запрос. Проверьте правильность введенных данных.",
-		},
-		{
 			name:     "generic error",
-			errMsg:   "something went wrong",
+			err:      fmt.Errorf("something went wrong"),
 			expected: "Ошибка: something went wrong",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a mock error
-			err := &mockError{msg: tt.errMsg}
-			result := FormatErrorMessage(err)
+			result := FormatErrorMessage(tt.err)
 			if result != tt.expected {
-				t.Errorf("FormatErrorMessage(%q) = %q, want %q", tt.errMsg, result, tt.expected)
+				t.Errorf("FormatErrorMessage(%v) = %q, want %q", tt.err, result, tt.expected)
 			}
 		})
 	}
-}
-
-// mockError is a simple error implementation for testing
-type mockError struct {
-	msg string
-}
-
-func (e *mockError) Error() string {
-	return e.msg
 }

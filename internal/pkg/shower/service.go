@@ -1,90 +1,122 @@
 package shower
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"review-info/internal/domain"
-	jiramodels "review-info/internal/pkg/jira/models"
-	"review-info/internal/pkg/shower/models"
-)
-
-// Pre-compiled regular expressions.
-var (
-	mergeRequestURLReg = regexp.MustCompile(`^(https?://)(git.vseinstrumenti.net)(.*)(/-/merge_requests/)(\d{1,10})$`)
-	jiraKeyReg         = regexp.MustCompile(`FD-\d{1,10}`)
 )
 
 type Service struct {
-	gitlab domain.GitLabClient
-	jira   domain.JiraClient
+	gitlab     domain.GitLabClient
+	jira       domain.JiraClient
+	gitlabHost string
+	jiraPrefix string
 }
 
 func New(
 	gitlab domain.GitLabClient,
 	jira domain.JiraClient,
+	gitlabHost string,
+	jiraPrefix string,
 ) *Service {
 	return &Service{
-		gitlab: gitlab,
-		jira:   jira,
+		gitlab:     gitlab,
+		jira:       jira,
+		gitlabHost: gitlabHost,
+		jiraPrefix: jiraPrefix,
 	}
 }
 
-func (s *Service) Process(mergeRequestURL string) (*models.Message, error) {
+// Ensure Service satisfies domain.MRProcessor at compile time.
+var _ domain.MRProcessor = (*Service)(nil)
+
+// buildPatterns returns the merge request URL regex and Jira key regex
+// compiled from the configured host and prefix.
+func (s *Service) buildPatterns() (*regexp.Regexp, *regexp.Regexp) {
+	mrRegex := regexp.MustCompile(fmt.Sprintf(`^(https?://)(%s)(.*)(/-/merge_requests/)(\d{1,10})$`, regexp.QuoteMeta(s.gitlabHost)))
+	jiraRegex := regexp.MustCompile(fmt.Sprintf(`%s\d{1,10}`, regexp.QuoteMeta(s.jiraPrefix)))
+	return mrRegex, jiraRegex
+}
+
+func (s *Service) Process(ctx context.Context, mergeRequestURL string) (*domain.Message, error) {
 	if mergeRequestURL == "" {
 		return nil, errors.New("empty gitlab url")
 	}
 
-	_, path, mrID, err := parseURL(mergeRequestURL)
+	mrRegex, _ := s.buildPatterns()
+	_, path, mrID, err := s.parseURL(mergeRequestURL, mrRegex)
 	if err != nil {
+		slog.Error("parsing gitlab url", "component", "shower", "operation", "parse_url", "url", mergeRequestURL, "error", err)
 		return nil, fmt.Errorf("splitting gitlab url: %w", err)
 	}
 
-	mr, err := s.gitlab.MergeRequest(path, mrID)
+	mr, err := s.gitlab.MergeRequest(ctx, path, mrID)
 	if err != nil {
 		return nil, fmt.Errorf("getting merge request: %w", err)
 	}
 
-	task, err := s.fetchJiraTaskFromBranch(mr.SourceBranch)
+	issueKey, err := s.resolveJiraKey(mr.SourceBranch, mr.Title)
+	if err != nil {
+		slog.Error("resolving jira key", "component", "shower", "operation", "resolve_jira_key", "branch", mr.SourceBranch, "title", mr.Title, "error", err)
+		return nil, fmt.Errorf("getting task: %w", err)
+	}
+
+	task, err := s.jira.Get(ctx, issueKey)
 	if err != nil {
 		return nil, fmt.Errorf("getting task: %w", err)
 	}
 
-	hasMigrations := s.detectMigrations(path, mrID)
+	hasMigrations := s.detectMigrations(ctx, path, mrID)
 
-	return &models.Message{
-		ServiceName: lastPart('/', path),
-		MergeRequest: models.MergeRequest{
+	return &domain.Message{
+		ServiceName: lastPart(path),
+		MergeRequest: domain.MergeRequest{
 			ID:              mrID,
 			MergeRequestURL: mergeRequestURL,
 		},
-		JiraTask: models.JiraTask{
-			ID:        task.Key,
-			Host:      "https://jsw.vseinstrumenti.ru/browse",
-			Summary:   task.Fields.Summary,
-			IssueType: task.Fields.Issuetype.Name,
+		JiraTask: domain.JiraIssue{
+			Key:       task.Key,
+			Host:      task.Host,
+			Summary:   task.Summary,
+			IssueType: task.IssueType,
 		},
 		HasMigrations: hasMigrations,
 	}, nil
 }
 
-// fetchJiraTaskFromBranch extracts a Jira issue key from the branch name and fetches the task.
-func (s *Service) fetchJiraTaskFromBranch(branch string) (*jiramodels.Jira, error) {
-	issue := jiraKeyReg.FindAllString(branch, -1)
-	if len(issue) != 1 {
-		return nil, fmt.Errorf("invalid merge request branch: %s", issue)
+// resolveJiraKey extracts a Jira issue key from the merge request branch name,
+// falling back to the merge request title when the branch contains no key.
+// The branch must contain exactly one key; multiple matches are ambiguous.
+func (s *Service) resolveJiraKey(branch, title string) (string, error) {
+	_, jiraRegex := s.buildPatterns()
+
+	branchKeys := jiraRegex.FindAllString(branch, -1)
+	switch {
+	case len(branchKeys) == 1:
+		return branchKeys[0], nil
+	case len(branchKeys) > 1:
+		return "", fmt.Errorf("ambiguous jira key in branch %q: %v", branch, branchKeys)
 	}
-	return s.jira.Get(issue[0])
+
+	if titleKey := jiraRegex.FindString(title); titleKey != "" {
+		return titleKey, nil
+	}
+
+	return "", fmt.Errorf("jira key not found in branch %q or title %q", branch, title)
 }
 
 // detectMigrations checks whether the merge request changes include migration files.
-func (s *Service) detectMigrations(path string, mrID int) bool {
-	changes, err := s.gitlab.MergeRequestChanges(path, mrID)
+func (s *Service) detectMigrations(ctx context.Context, path string, mrID int) bool {
+	changes, err := s.gitlab.MergeRequestChanges(ctx, path, mrID)
 	if err != nil {
+		slog.Warn("detecting migrations", "component", "shower", "operation", "detect_migrations", "project", path, "mr_iid", mrID, "error", err)
 		return false
 	}
 	for _, change := range changes.Changes {
@@ -95,12 +127,12 @@ func (s *Service) detectMigrations(path string, mrID int) bool {
 	return false
 }
 
-func parseURL(urlStr string) (baseURL, projectPath string, id int, err error) {
+func (s *Service) parseURL(urlStr string, mrRegex *regexp.Regexp) (baseURL, projectPath string, id int, err error) {
 	if _, err = url.Parse(urlStr); err != nil {
 		return "", "", 0, fmt.Errorf("parsing url: %w", err)
 	}
 
-	res := mergeRequestURLReg.FindAllStringSubmatch(urlStr, -1)
+	res := mrRegex.FindAllStringSubmatch(urlStr, -1)
 	if len(res) != 1 || len(res[0]) != 6 {
 		return "", "", 0, fmt.Errorf("invalid url: %s", urlStr)
 	}
@@ -117,9 +149,8 @@ func isMigrationFile(path string) bool {
 	return strings.Contains(path, "/migration/") && strings.HasSuffix(path, ".sql")
 }
 
-func lastPart(delim rune, path string) string {
-	path, _ = strings.CutSuffix(path, string(delim))
+func lastPart(path string) string {
+	path, _ = strings.CutSuffix(path, "/")
 	splitted := strings.Split(path, "/")
-
 	return splitted[len(splitted)-1]
 }

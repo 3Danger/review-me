@@ -1,57 +1,53 @@
 package jira
 
 import (
+	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
+	"log/slog"
+	"strings"
 
 	"review-info/internal/config"
 	"review-info/internal/domain"
+	"review-info/internal/pkg/httpclient"
 	"review-info/internal/pkg/jira/models"
 )
 
+// Ensure Service satisfies domain.JiraClient at compile time.
+var _ domain.JiraClient = (*Service)(nil)
+
 type Service struct {
-	config config.Jira
-	client domain.HTTPClient
+	client  *httpclient.Client
+	user    string
+	pass    string
+	baseURL string
 }
 
-func New(client domain.HTTPClient, config config.Jira) *Service {
+func New(client domain.HTTPClient, cfg config.Jira) *Service {
+	baseURL := strings.TrimRight(cfg.BaseURL, "/")
 	return &Service{
-		config: config,
-		client: client,
+		client:  httpclient.New(client, baseURL),
+		user:    cfg.User,
+		pass:    cfg.Pass,
+		baseURL: baseURL,
 	}
 }
 
-func (s *Service) Get(issueKey string) (*models.Jira, error) {
-	url := fmt.Sprintf("%s/rest/api/2/issue/%s", s.config.BaseURL, issueKey)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("ошибка при создании запроса: %v", err)
-	}
-
-	// Базовая аутентификация
-	basicAuth := base64.StdEncoding.EncodeToString([]byte(s.config.User + ":" + s.config.Pass))
-	req.Header.Add("Authorization", "Basic "+basicAuth)
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("ошибка при выполнении запроса: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-
-		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(body))
-	}
+func (s *Service) Get(ctx context.Context, issueKey string) (*domain.JiraIssue, error) {
+	path := fmt.Sprintf("/rest/api/2/issue/%s", issueKey)
+	auth := base64.StdEncoding.EncodeToString([]byte(s.user + ":" + s.pass))
+	headers := map[string]string{"Authorization": "Basic " + auth}
 
 	var issue models.Jira
-	if err = json.NewDecoder(resp.Body).Decode(&issue); err != nil {
-		return nil, fmt.Errorf("json decoding response: %w", err)
+	if err := s.client.Get(ctx, path, headers, &issue); err != nil {
+		slog.Error("fetching jira issue", "component", "jira", "operation", "get_issue", "issue_key", issueKey, "error", err)
+		return nil, err
 	}
 
-	return &issue, nil
+	return &domain.JiraIssue{
+		Key:       issue.Key,
+		Summary:   issue.Fields.Summary,
+		IssueType: issue.Fields.Issuetype.Name,
+		Host:      s.baseURL + "/browse",
+	}, nil
 }
